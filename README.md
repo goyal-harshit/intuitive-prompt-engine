@@ -1,20 +1,55 @@
 # IntuitivePromptEngine
 
-**An intent-driven multimodal prompt generation system.** IntuitivePromptEngine watches your hands, posture, and expression through a standard webcam, infers your *creative intention* — not commands — and continuously compiles an evolving Scene Graph of your imagination into optimized prompts for generative image models. You never type a prompt.
+[![CI](https://github.com/goyal-harshit/intuitive-prompt-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/goyal-harshit/intuitive-prompt-engine/actions/workflows/ci.yml)
+[![Deploy](https://github.com/goyal-harshit/intuitive-prompt-engine/actions/workflows/deploy.yml/badge.svg)](https://github.com/goyal-harshit/intuitive-prompt-engine/actions/workflows/deploy.yml)
+[![Python 3.10–3.12](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg?logo=docker&logoColor=white)](docker-compose.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Code style: ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
 
-## GitHub Pages Deployment
-The frontend of this project is ready to be hosted statically on GitHub Pages!
-- Set up GitHub Pages in your repository settings to build and deploy via GitHub Actions.
-- When running the frontend on GitHub Pages, click the ⚙️ **Settings** button in the topbar to configure your local Python backend URL (default: `http://localhost:8000`). This bridges the static UI with your local webcam and models.
+**An intent-driven multimodal prompt generation system.** IntuitivePromptEngine watches your hands, posture, and expression through a standard webcam, infers your *creative intention* — not commands — and continuously compiles an evolving Scene Graph of your imagination into optimized prompts for generative image models. **You never type a prompt.**
 
-## Quick start (CPU-only, no API keys)
+> Rather than mapping gestures to commands, the engine extracts continuous semantic features (openness, expansion rate, circularity, tempo, smoothness, affect…), segments them into motion primitives, fuses them with interaction history into confidence-scored intent hypotheses, and merges those into a persistent Scene Graph. When the graph is complete and stable, a swappable prompt strategy compiles it into a diffusion-ready prompt and a swappable image backend renders it.
+
+<!-- DEMO: drop a screen recording here once captured (webcam required):
+     ![demo](docs/media/demo.gif) -->
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Frontend["Frontend (zero-build SPA)"]
+        UI["Live features · Scene graph · Image"]
+    end
+    subgraph Backend["Backend (FastAPI + WebSocket)"]
+        direction LR
+        V["vision<br/>webcam + MediaPipe"] --> G["gestures<br/>semantic features + primitives"]
+        G --> I["intent<br/>ontology + evidence fusion"]
+        I --> S["scene<br/>Scene Graph merge/decay"]
+        S --> P["prompting<br/>template | Ollama"]
+        P --> IG["imagegen<br/>Pollinations | HF | ComfyUI"]
+        S -.-> DB[("storage<br/>SQLite event log")]
+        IG -.-> DB
+    end
+    UI <-->|REST + WS| Backend
+    IG -->|images| UI
+```
+
+Every stage sits behind an interface (`FrameSource`, `LandmarkExtractor`, `IntentModel`, `PromptGenerator`, `ImageGenerator`) — swap a model or backend without touching the rest. Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/GESTURE_ONTOLOGY.md](docs/GESTURE_ONTOLOGY.md) · [docs/SCENE_GRAPH.md](docs/SCENE_GRAPH.md) · [docs/API.md](docs/API.md) · [docs/DATA_MODELS.md](docs/DATA_MODELS.md) · [docs/ROADMAP.md](docs/ROADMAP.md).
+
+---
+
+## Quick start
+
+Two ways to run. The **native** path is webcam-enabled and best for actually using the interface; the **Docker** path is the reproducible, production-style stack (webcam capture is a host-only concern — see the note below).
+
+### A. Native (CPU-only, no API keys) — recommended for using the webcam
 
 Requires Python 3.10–3.12 and a webcam.
 
-**Windows — one click:** just double-click **`start.bat`**. On first run it creates the
-virtual environment, installs dependencies, then launches the server and opens your
-browser automatically. Subsequent runs skip straight to launch. If port 8000 is busy
-it automatically moves to the next free port.
+**Windows — one click:** double-click **`start.bat`**. On first run it creates the virtual environment, installs dependencies, then launches the server and opens your browser. Subsequent runs skip straight to launch; if port 8000 is busy it moves to the next free port.
 
 **Manual (any OS):**
 
@@ -26,20 +61,77 @@ pip install -r requirements.txt
 python run.py
 ```
 
-The server opens automatically (or open the printed URL — 127.0.0.1:8000 by default),
-click **Start session**, and gesture. Images are generated through the free Pollinations FLUX endpoint by default — no GPU, no key.
+Open the printed URL (default `http://127.0.0.1:8000`), click **Start session**, and gesture. Images are generated through the free Pollinations FLUX endpoint by default — no GPU, no key.
 
-Optional upgrades (each is a `config.yaml` change, nothing else):
+### B. Docker (full stack: API + nginx frontend)
 
-- **Local LLM prompt optimization** — install [Ollama](https://ollama.com), `ollama pull qwen2.5:3b`. Auto-detected.
-- **Hugging Face SDXL** — set `HF_TOKEN`, switch `imagegen.backend: huggingface`.
+Requires Docker Desktop / Docker Engine with Compose.
+
+**Windows — one click:** double-click **`docker-start.bat`**. It detects Docker, builds the images from scratch if they are not present yet, then starts the stack.
+
+**Any OS:**
+
+```bash
+docker compose up --build
+```
+
+- Frontend: <http://localhost:8080>
+- API: <http://localhost:8000/api/health> (interactive docs at `/docs`)
+
+Enable a local Ollama LLM for prompt optimization:
+
+```bash
+docker compose --profile ollama up --build
+```
+
+> **Webcam & Docker.** The gesture pipeline reads a physical camera, which containers cannot access portably (especially on Windows/macOS Docker Desktop). The containerized backend therefore serves the REST/WebSocket API, health, config, and stored generations; the live capture loop runs when you use the **native** path. On Linux you can pass a device through with `--device /dev/video0`.
+
+### Optional upgrades
+
+Each is a `config.yaml` change (or an env var), nothing else:
+
+- **Local LLM prompt optimization** — install [Ollama](https://ollama.com), `ollama pull qwen2.5:3b`. Auto-detected (`PROMPTING_STRATEGY=auto`).
+- **Hugging Face SDXL** — set `HF_TOKEN`, switch `IMAGEGEN_BACKEND=huggingface`.
 - **Local ComfyUI (SDXL/FLUX)** — Phase 4 adapter, see [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## How it works
+---
 
-Rather than mapping gestures to commands, GestureGPT extracts **continuous semantic features** (openness, expansion rate, circularity, tempo, smoothness, affect…), segments them into **motion primitives** by soft prototype matching, and fuses primitives with interaction history into **intent hypotheses** with confidence scores. Hypotheses merge into a persistent **Scene Graph** (objects + environment, mood, lighting, camera, style…) using noisy-OR reinforcement, confidence-decay conflict resolution, and object coreference. When the graph is sufficiently complete and stable, a swappable prompt strategy (Ollama LLM or deterministic template) compiles it into a diffusion-ready prompt, and a swappable image backend renders it. Your next gestures refine the same scene.
+## Configuration
 
-Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/GESTURE_ONTOLOGY.md](docs/GESTURE_ONTOLOGY.md) · [docs/SCENE_GRAPH.md](docs/SCENE_GRAPH.md) · [docs/API.md](docs/API.md) · [docs/DATA_MODELS.md](docs/DATA_MODELS.md) · [docs/ROADMAP.md](docs/ROADMAP.md)
+Runtime settings live in [`config.yaml`](config.yaml). For deployment, the settings below can be overridden with environment variables (env wins over YAML). Copy [`.env.example`](.env.example) to `.env` for Docker.
+
+| Env var | Overrides | Default | Notes |
+|---|---|---|---|
+| `IMAGEGEN_BACKEND` | `imagegen.backend` | `pollinations` | `pollinations` \| `huggingface` \| `comfyui` |
+| `PROMPTING_STRATEGY` | `prompting.strategy` | `auto` | `auto` \| `template` \| `ollama` |
+| `OLLAMA_URL` | `prompting.ollama_url` | `http://127.0.0.1:11434` | Ollama endpoint for LLM prompting |
+| `HF_TOKEN` | — | _unset_ | Hugging Face Inference token (huggingface backend) |
+| `SERVER_HOST` | `server.host` | `127.0.0.1` | `0.0.0.0` in the container |
+| `SERVER_PORT` | `server.port` | `8000` | `run.py` also honors `PORT` |
+| `DATA_DIR` | `data_dir` | `./data` | SQLite DB + generated images; mounted as a volume in Docker |
+
+---
+
+## API
+
+FastAPI backend, default `http://127.0.0.1:8000`; the SPA is served at `/`. Interactive OpenAPI docs at `/docs`, schema at `/openapi.json`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/health` | liveness + active backends |
+| POST | `/api/session` | start a session → `{session_id}` |
+| DELETE | `/api/session/{id}` | stop session, persist final snapshot |
+| GET | `/api/session/{id}/scene` | current Scene Graph JSON |
+| GET | `/api/session/{id}/generations` | list generated images (metadata) |
+| POST | `/api/session/{id}/generate` | force a generation |
+| GET | `/api/session/{id}/frame` \| `/video` | annotated camera frame / MJPEG stream |
+| GET | `/api/images/{image_id}` | image bytes |
+| GET | `/api/config` | active configuration |
+| WS | `/ws/{session_id}` | live features, primitives, intents, scene updates, generations |
+
+Full contract: [docs/API.md](docs/API.md).
+
+---
 
 ## Project structure
 
@@ -54,16 +146,40 @@ backend/
   storage/    SQLite event log (full session replay)
   pipeline/   orchestrator wiring
   app/        FastAPI + WebSocket
+  core/       typed config (+ env overrides) and the event bus
 frontend/     zero-build SPA (live features, scene graph, image)
 docs/         architecture & research design docs
+tests/        unit + integration tests
+Dockerfile · docker/ · docker-compose.yml     containerized stack
+.github/workflows/  ci.yml (lint/type/test/build) · deploy.yml (Pages)
 ```
 
-Every stage sits behind an interface (`FrameSource`, `LandmarkExtractor`, `IntentModel`, `PromptGenerator`, `ImageGenerator`) — swap models without touching the rest.
+---
+
+## Development & testing
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .      # lint
+mypy              # type-check
+pytest            # unit + integration tests
+```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs lint, type-check and the test suite on Python 3.10–3.12, and builds + smoke-tests the Docker stack on every push and PR. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## Deployment
+
+- **Frontend → GitHub Pages.** [`deploy.yml`](.github/workflows/deploy.yml) publishes `frontend/` on push to `main`. On Pages, click ⚙️ **Settings** in the topbar to point the static UI at your local backend URL (default `http://localhost:8000`).
+- **Backend → any container host.** Build the image (`docker build -t ipe-backend .`) or use `docker compose` on a VM/host with the `engine-data` volume for persistence. Set `SERVER_HOST=0.0.0.0` (already the container default) and mount `/data`.
+
+---
 
 ## Tech
 
-Python · OpenCV · MediaPipe · FastAPI · Pydantic · SQLAlchemy/SQLite · httpx · Ollama (Qwen/Mistral) · FLUX/SDXL. All free and open source.
+Python · OpenCV · MediaPipe · FastAPI · Pydantic · SQLAlchemy/SQLite · httpx · Ollama (Qwen/Mistral) · FLUX/SDXL · Docker · nginx. All free and open source.
 
 ## License
 
-MIT
+[MIT](LICENSE) © 2026 Harshit Goyal
