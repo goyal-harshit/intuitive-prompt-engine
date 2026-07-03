@@ -19,7 +19,7 @@ it automatically moves to the next free port.
 **Manual (any OS):**
 
 ```bash
-git clone https://github.com/<you>/gesturegpt && cd gesturegpt
+git clone https://github.com/goyal-harshit/intuitive-prompt-engine && cd intuitive-prompt-engine
 python -m venv .venv
 .venv\Scripts\activate          # Windows   (Linux/macOS: source .venv/bin/activate)
 pip install -r requirements.txt
