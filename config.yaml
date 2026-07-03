@@ -1,0 +1,15 @@
+camera: {index: 0, width: 640, height: 480, fps: 30}
+vision: {hands: true, pose: true, face: true}
+intent: {window_s: 1.5, decay_half_life_s: 90, min_confidence: 0.35}
+scene: {completeness_threshold: 0.6, stability_s: 2.0, regen_diff: 0.25}
+prompting:
+  strategy: auto            # auto | template | ollama
+  ollama_url: http://127.0.0.1:11434
+  ollama_model: qwen2.5:3b
+imagegen:
+  backend: pollinations     # pollinations | huggingface | comfyui
+  width: 1024
+  height: 768
+  huggingface: {model: stabilityai/stable-diffusion-xl-base-1.0, token_env: HF_TOKEN}
+  comfyui: {url: "http://127.0.0.1:8188", workflow: sdxl_default}
+server: {host: 127.0.0.1, port: 8000}

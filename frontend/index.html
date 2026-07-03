@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GestureGPT · Intent-Driven Creative Interface</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 11V6.5a1.5 1.5 0 0 1 3 0V10" />
+          <path d="M9 10V4.5a1.5 1.5 0 0 1 3 0V10" />
+          <path d="M12 10V5.5a1.5 1.5 0 0 1 3 0V11" />
+          <path d="M15 11V7.5a1.5 1.5 0 0 1 3 0V15a5 5 0 0 1-5 5h-1.5a5 5 0 0 1-4.2-2.3L6 15c-.8-1.2.9-2.6 2-1.6L9 15" />
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>Gesture<span>GPT</span></h1>
+        <p>Intent-driven creative interface</p>
+      </div>
+    </div>
+
+    <div class="status-cluster">
+      <span id="status-dot" class="dot"></span>
+      <span id="status" class="status-label">disconnected</span>
+    </div>
+
+    <div class="actions">
+      <button id="btn-settings" class="btn btn-ghost" title="Backend Settings">⚙️ Settings</button>
+      <button id="btn-help" class="btn btn-ghost">How it works</button>
+      <button id="btn-start" class="btn btn-primary"><span class="btn-icon">●</span> Start session</button>
+      <button id="btn-stop" class="btn btn-danger" disabled><span class="btn-icon">■</span> Stop</button>
+      <button id="btn-pause" class="btn btn-ghost" disabled>Pause</button>
+      <button id="btn-reset" class="btn btn-ghost" disabled>Reset scene</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden>
+    <div class="banner-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 9v4" /><path d="M12 17h.01" />
+        <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+      </svg>
+    </div>
+    <div class="banner-text">
+      <strong id="banner-title">Camera unavailable</strong>
+      <span id="banner-msg"></span>
+    </div>
+    <button id="banner-close" class="banner-close" aria-label="Dismiss">✕</button>
+  </div>
+
+  <main class="grid">
+    <!-- Column 1 · PERCEPTION -->
+    <section class="col">
+      <div class="panel panel-camera">
+        <div class="panel-head">
+          <h2><span class="stage-dot">1</span> Camera · gesture tracking</h2>
+          <span id="cam-tag" class="tag">offline</span>
+        </div>
+        <div class="panel-body">
+          <div class="camera-box">
+            <img id="video" alt="Live camera with gesture tracking" hidden />
+            <div id="camera-idle" class="camera-idle">
+              <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m22 8-6 4 6 4V8z" /><rect x="2" y="6" width="14" height="12" rx="2" />
+              </svg>
+              <p>Camera is off. Click <b>Start session</b> to begin tracking.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel panel-grow">
+        <div class="panel-head"><h2>Live motion features</h2><span class="tag">real-time</span></div>
+        <div id="features" class="panel-body scroll">
+          <div class="empty">Start a session to read your motion.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Column 2 · UNDERSTANDING -->
+    <section class="col">
+      <div class="panel panel-grow">
+        <div class="panel-head">
+          <h2><span class="stage-dot">2</span> Scene graph</h2>
+          <div class="completeness">
+            <div class="completeness-bar"><div id="completeness-fill"></div></div>
+            <span id="completeness" class="completeness-val">0%</span>
+          </div>
+        </div>
+        <div id="scene" class="panel-body scroll">
+          <div class="empty">Gesture to begin shaping the scene…</div>
+        </div>
+      </div>
+
+      <div class="panel panel-half">
+        <div class="panel-head"><h2>Motion primitives</h2></div>
+        <div id="primitives" class="panel-body scroll">
+          <div class="empty">No primitives yet.</div>
+        </div>
+      </div>
+
+      <div class="panel panel-half">
+        <div class="panel-head"><h2>Intent stream</h2></div>
+        <div id="intents" class="panel-body scroll">
+          <div class="empty">Inferred intentions will appear here.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Column 3 · CREATION -->
+    <section class="col">
+      <div class="panel panel-grow">
+        <div class="panel-head">
+          <h2><span class="stage-dot">3</span> Generated image</h2>
+          <span id="gen-badge" class="tag" hidden>generating…</span>
+        </div>
+        <div class="panel-body panel-body-flush">
+          <div id="image-box" class="image-box">
+            <div id="gen-status" class="gen-placeholder">
+              <div class="spinner" hidden></div>
+              <p>Waiting for the scene to take shape…</p>
+            </div>
+            <img id="image" alt="Generated scene" hidden />
+          </div>
+        </div>
+      </div>
+      <div class="panel panel-prompt">
+        <div class="panel-head"><h2>Compiled prompt</h2></div>
+        <div id="prompt" class="panel-body prompt">The prompt built from your gestures appears here.</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- How it works modal -->
+<div id="help-modal" class="modal" hidden>
+  <div class="modal-backdrop"></div>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>How GestureGPT works</h2>
+      <button id="help-close" class="banner-close" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="lead">GestureGPT never asks you to type a prompt. It watches your hands, posture and
+      expression through the webcam, infers your <b>creative intention</b>, and continuously
+      compiles an evolving <b>Scene Graph</b> of your imagination into an optimized image prompt.</p>
+
+      <div class="pipeline">
+        <div class="pipe-step"><span>1</span><b>Perception</b><p>MediaPipe tracks 21 hand, 33 body and face landmarks — the dots & lines on the feed.</p></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step"><span>2</span><b>Understanding</b><p>Motion becomes semantic features → gesture "primitives" → weighted intent about your scene.</p></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step"><span>3</span><b>Creation</b><p>When the scene is complete & stable, it's compiled to a prompt and rendered.</p></div>
+      </div>
+
+      <h3>Gesture dictionary</h3>
+      <p class="hint">Nothing is a hotkey — every movement is <i>evidence</i>, fused over time. Use slow, deliberate motions.</p>
+      <table class="gtable">
+        <thead><tr><th>Do this</th><th>It means</th></tr></thead>
+        <tbody>
+          <tr><td>🖐️ Spread both hands apart / open arms wide</td><td>Grander, monumental scale · wide shot</td></tr>
+          <tr><td>🤏 Bring hands together</td><td>Intimate close-up · small, detailed scale</td></tr>
+          <tr><td>⬆️ Raise a hand upward</td><td>Something soaring upward · low camera angle</td></tr>
+          <tr><td>⬇️ Lower your hands</td><td>Bird's-eye high angle · grounded, heavy mood</td></tr>
+          <tr><td>☝️ Point one finger to the sky</td><td>A flying object, high in the sky</td></tr>
+          <tr><td>👉 Point forward at the camera</td><td>Emphasize a focal subject</td></tr>
+          <tr><td>🌙 Draw a slow circle overhead</td><td>A glowing orb / moon · night · moonlit glow</td></tr>
+          <tr><td>⭕ Circle a hand in front of you</td><td>A round, orbiting form · swirling motion</td></tr>
+          <tr><td>↔️ Sweep a hand sideways</td><td>Sweeping open landscape · panorama</td></tr>
+          <tr><td>🫸 Push palms away from you</td><td>Subject recedes into the distance</td></tr>
+          <tr><td>🤲 Pull hands toward you</td><td>Subject drawn close, dominant in frame</td></tr>
+          <tr><td>🔲 Make a rectangle with both hands</td><td>Deliberate, cinematic composition</td></tr>
+          <tr><td>👋 Wave a hand</td><td>Windswept, dynamic movement · breezy weather</td></tr>
+          <tr><td>✋ Hold completely still (~2s)</td><td><b>Commit</b> — locks the scene & triggers rendering</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Mood & atmosphere cues (sustained)</h3>
+      <ul class="cues">
+        <li><b>Fast motion</b> → energetic, dramatic mood · <b>slow motion</b> → calm, serene</li>
+        <li><b>Smooth motion</b> → soft diffuse light</li>
+        <li><b>Smile</b> → warm vibrant palette · <b>frown</b> → moody chiaroscuro, cold palette</li>
+        <li><b>Tilt head up</b> → expansive sky above · <b>raised brows / wide eyes</b> → dramatic atmosphere</li>
+      </ul>
+
+      <p class="hint">Tip: the image regenerates on its own as the scene changes meaningfully. Use <b>Reset scene</b>
+      to start a fresh imagination, <b>Pause</b> to freeze tracking, and <b>Stop</b> to end the session and turn the camera off.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div id="settings-modal" class="modal" hidden>
+  <div class="modal-backdrop"></div>
+  <div class="modal-card" style="max-width: 420px;">
+    <div class="modal-head">
+      <h2>API Backend Settings</h2>
+      <button id="settings-close" class="banner-close" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="lead" style="font-size: 12.5px; margin-bottom: 16px; color: var(--muted);">
+        Configure the local or remote Python server address. This allows the static frontend hosted on GitHub Pages to connect to the backend running on your machine.
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+        <label for="input-backend-url" style="font-weight: 500; font-size: 12px; color: var(--text);">Backend API URL</label>
+        <input type="text" id="input-backend-url" placeholder="http://localhost:8000" style="padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--panel); color: var(--text); font-family: inherit; font-size: 13px;" />
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button id="btn-settings-cancel" class="btn btn-ghost">Cancel</button>
+        <button id="btn-settings-save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

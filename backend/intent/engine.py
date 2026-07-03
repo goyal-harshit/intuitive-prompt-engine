@@ -1,0 +1,92 @@
+"""Intent Engine: fuses motion primitives + ambient affect into IntentFrames.
+
+Context-aware: repetition emphasis, post-render refinement weighting, and
+recency gating. Behind `IntentModel` so a learned/LLM model can replace it.
+"""
+from __future__ import annotations
+
+import uuid
+from abc import ABC, abstractmethod
+from collections import deque
+
+from backend.core.config import IntentConfig
+from backend.gestures.schema import GestureFeatureVector, MotionPrimitive, SequenceSegment
+from backend.intent.ontology import AMBIENT_RULES, ONTOLOGY, Hypothesis
+from backend.intent.schema import IntentFrame
+
+
+class IntentModel(ABC):
+    @abstractmethod
+    def on_segment(self, seg: SequenceSegment, features: GestureFeatureVector) -> list[IntentFrame]: ...
+
+    @abstractmethod
+    def on_features(self, features: GestureFeatureVector) -> list[IntentFrame]: ...
+
+    @abstractmethod
+    def notify_render(self, ts: float) -> None: ...
+
+
+class RuleBasedIntentModel(IntentModel):
+    def __init__(self, cfg: IntentConfig) -> None:
+        self._cfg = cfg
+        self._recent: deque[tuple[float, MotionPrimitive]] = deque(maxlen=20)
+        self._last_render_ts: float | None = None
+        self._ambient_state: dict[str, float] = {}
+        self._ambient_emitted: dict[str, float] = {}
+
+    def notify_render(self, ts: float) -> None:
+        self._last_render_ts = ts
+
+    def on_segment(self, seg: SequenceSegment, features: GestureFeatureVector) -> list[IntentFrame]:
+        frames: list[IntentFrame] = []
+        repeats = sum(1 for ts, p in self._recent if p == seg.primitive and seg.t_start - ts < 5.0)
+        self._recent.append((seg.t_end, seg.primitive))
+
+        for hyp in ONTOLOGY.get(seg.primitive, []):
+            if not self._conditions_met(hyp, features):
+                continue
+            conf, modifiers = seg.confidence * hyp.weight, []
+            if repeats:
+                conf *= min(2.0, 1.3 ** repeats)
+                modifiers.append(f"repetition x{repeats + 1}")
+            if self._last_render_ts is not None and seg.t_start - self._last_render_ts < 8.0:
+                conf *= 1.5
+                modifiers.append("post_render_refinement")
+            conf = min(1.0, conf)
+            if conf < self._cfg.min_confidence:
+                continue
+            frames.append(IntentFrame(
+                id=f"int_{uuid.uuid4().hex[:8]}", ts=seg.t_end,
+                target=hyp.target, category=hyp.category,
+                attribute=hyp.attribute, value=hyp.value,
+                confidence=round(conf, 3), evidence=[seg.id], modifiers=modifiers,
+            ))
+        return frames
+
+    def on_features(self, features: GestureFeatureVector) -> list[IntentFrame]:
+        """Ambient hypotheses from smoothed affect/tempo; rate-limited per attribute."""
+        frames: list[IntentFrame] = []
+        alpha = 0.05
+        for key, (lo, hi), hyp in AMBIENT_RULES:
+            raw = getattr(features, key, 0.0)
+            s = self._ambient_state.get(key, raw)
+            s += alpha * (raw - s)
+            self._ambient_state[key] = s
+            if not lo <= s <= hi:
+                continue
+            gate = f"{key}:{hyp.attribute}:{hyp.value}"
+            if features.ts - self._ambient_emitted.get(gate, -1e9) < 10.0:
+                continue
+            self._ambient_emitted[gate] = features.ts
+            conf = hyp.weight
+            if conf >= self._cfg.min_confidence:
+                frames.append(IntentFrame(
+                    id=f"int_{uuid.uuid4().hex[:8]}", ts=features.ts,
+                    target=hyp.target, attribute=hyp.attribute, value=hyp.value,
+                    confidence=conf, modifiers=["ambient"],
+                ))
+        return frames
+
+    @staticmethod
+    def _conditions_met(hyp: Hypothesis, features: GestureFeatureVector) -> bool:
+        return all(lo <= getattr(features, k, 0.0) <= hi for k, (lo, hi) in hyp.conditions.items())
