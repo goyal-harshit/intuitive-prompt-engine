@@ -1,6 +1,7 @@
 """Typed application configuration loaded from config.yaml with env overrides."""
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -75,11 +76,40 @@ class AppConfig(BaseModel):
     data_dir: Path = ROOT / "data"
 
 
+# Environment overrides — deployment knobs a container/CI needs without editing
+# config.yaml. Each maps an env var to a nested field applied after the YAML load.
+# Kept deliberately small: these are the only settings that differ across hosts.
+_ENV_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "DATA_DIR": ("data_dir",),
+    "SERVER_HOST": ("server", "host"),
+    "SERVER_PORT": ("server", "port"),
+    "IMAGEGEN_BACKEND": ("imagegen", "backend"),
+    "PROMPTING_STRATEGY": ("prompting", "strategy"),
+    "OLLAMA_URL": ("prompting", "ollama_url"),
+}
+
+
+def _apply_env_overrides(raw: dict) -> dict:
+    """Overlay ``_ENV_OVERRIDES`` onto the raw config mapping (env wins)."""
+    for env_var, path in _ENV_OVERRIDES.items():
+        value = os.environ.get(env_var)
+        if value is None or value == "":
+            continue
+        node = raw
+        for key in path[:-1]:
+            node = node.setdefault(key, {})
+            if not isinstance(node, dict):  # a scalar in YAML shadowing a section
+                raise ValueError(f"config key {'.'.join(path)} is not a mapping")
+        node[path[-1]] = value
+    return raw
+
+
 @lru_cache(maxsize=1)
 def get_config() -> AppConfig:
     path = ROOT / "config.yaml"
     raw = yaml.safe_load(path.read_text()) if path.exists() else {}
-    cfg = AppConfig.model_validate(raw or {})
+    raw = _apply_env_overrides(raw or {})
+    cfg = AppConfig.model_validate(raw)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     (cfg.data_dir / "images").mkdir(exist_ok=True)
     return cfg
