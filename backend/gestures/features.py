@@ -10,8 +10,8 @@ from collections import deque
 
 import numpy as np
 
-from backend.vision.schema import HandLandmarks, LandmarkFrame
 from backend.gestures.schema import GestureFeatureVector
+from backend.vision.schema import HandLandmarks, LandmarkFrame
 
 WRIST, INDEX_TIP, INDEX_PIP, MIDDLE_TIP, THUMB_TIP, PINKY_TIP = 0, 8, 6, 12, 4, 20
 FINGERTIPS = (4, 8, 12, 16, 20)

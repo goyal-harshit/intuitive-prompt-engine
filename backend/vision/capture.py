@@ -3,7 +3,7 @@ recorded frames and a future browser-stream source can replace OpenCV."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Iterator
+from collections.abc import Iterator
 
 import numpy as np
 
@@ -51,6 +51,7 @@ class OpenCVCamera(FrameSource):
     def frames(self) -> Iterator[tuple[float, np.ndarray]]:
         import time
 
+        assert self._cap is not None  # __init__ raises if the camera never opened
         while self._cap.isOpened():
             ok, frame = self._cap.read()
             if not ok:
@@ -58,4 +59,5 @@ class OpenCVCamera(FrameSource):
             yield time.monotonic(), self._cv2.flip(frame, 1)  # mirror for natural UX
 
     def close(self) -> None:
-        self._cap.release()
+        if self._cap is not None:
+            self._cap.release()

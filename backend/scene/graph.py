@@ -13,7 +13,10 @@ import uuid
 from backend.core.config import SceneConfig
 from backend.intent.schema import IntentFrame
 from backend.scene.schema import (
-    GLOBAL_KEYS, AttributeValue, SceneEvent, SceneGraph, SceneObject,
+    AttributeValue,
+    SceneEvent,
+    SceneGraph,
+    SceneObject,
 )
 
 _COMPLETENESS_WEIGHTS: list[tuple[tuple[str, ...], float]] = [

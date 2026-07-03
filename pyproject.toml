@@ -1,0 +1,35 @@
+[project]
+name = "intuitive-prompt-engine"
+version = "0.1.0"
+description = "Intent-driven multimodal prompt generation from webcam gesture, posture and expression."
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = { text = "MIT" }
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = [".venv", "data", "frontend"]
+
+[tool.ruff.lint]
+# pyflakes (F) + a curated pycodestyle/bugbear/isort/pyupgrade set.
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",  # line length is not enforced (long, descriptive lines are intentional)
+    "B008",  # FastAPI dependency-injection defaults use function calls
+]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true    # cv2/mediapipe ship without complete stubs
+warn_unused_ignores = false
+warn_redundant_casts = true
+no_implicit_optional = true
+files = ["backend", "run.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

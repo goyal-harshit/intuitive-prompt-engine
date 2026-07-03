@@ -61,7 +61,8 @@ class MediaPipeExtractor(LandmarkExtractor):
             res = self._hands.process(rgb)
             self._last_hands = res
             if res.multi_hand_landmarks:
-                for lm, handed in zip(res.multi_hand_landmarks, res.multi_handedness):
+                for lm, handed in zip(res.multi_hand_landmarks,
+                                      res.multi_handedness, strict=False):
                     out.hands.append(HandLandmarks(
                         handedness=handed.classification[0].label,
                         points=[(p.x, p.y, p.z) for p in lm.landmark],
