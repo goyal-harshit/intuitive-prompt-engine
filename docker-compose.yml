@@ -1,0 +1,58 @@
+# IntuitivePromptEngine — full local stack.
+#
+#   docker compose up --build              backend API + frontend (nginx)
+#   docker compose --profile ollama up     also start a local Ollama for LLM prompts
+#
+# The webcam pipeline is a host concern; the containerized backend serves the
+# REST/WebSocket API, health, config and stored generations. Open the frontend
+# at http://localhost:8080.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: intuitive-prompt-engine-backend
+    environment:
+      SERVER_HOST: 0.0.0.0
+      DATA_DIR: /data
+      IMAGEGEN_BACKEND: ${IMAGEGEN_BACKEND:-pollinations}
+      # 'auto' probes the ollama service if the ollama profile is enabled,
+      # otherwise falls back to the deterministic template strategy.
+      PROMPTING_STRATEGY: ${PROMPTING_STRATEGY:-auto}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - engine-data:/data
+    expose:
+      - "8000"
+    ports:
+      # Optional direct access to the API (frontend proxies it anyway).
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    image: intuitive-prompt-engine-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # Optional local LLM for prompt optimization. Enable with:
+  #   docker compose --profile ollama up
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+
+volumes:
+  engine-data:
+  ollama-models:
