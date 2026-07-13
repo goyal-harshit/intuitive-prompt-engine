@@ -1,4 +1,5 @@
 """Environment-variable overrides layered on top of config.yaml."""
+
 import importlib
 
 import backend.core.config as config
@@ -61,3 +62,19 @@ def test_module_reimport_is_stable(monkeypatch) -> None:
     # Guard against import-time side effects breaking a reload.
     importlib.reload(config)
     assert hasattr(config, "get_config")
+
+
+def test_cors_origins_default(monkeypatch) -> None:
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    cfg = _fresh(monkeypatch)
+    assert "http://localhost:5173" in cfg.server.cors_origins
+
+
+def test_cors_origins_env_override_splits_on_comma(monkeypatch) -> None:
+    cfg = _fresh(monkeypatch, CORS_ORIGINS="https://a.example, https://b.example")
+    assert cfg.server.cors_origins == ["https://a.example", "https://b.example"]
+
+
+def test_session_ttl_env_override(monkeypatch) -> None:
+    cfg = _fresh(monkeypatch, SESSION_TTL_S="60")
+    assert cfg.server.session_ttl_s == 60

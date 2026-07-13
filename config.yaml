@@ -1,6 +1,17 @@
 camera: {index: 0, width: 640, height: 480, fps: 30}
 vision: {hands: true, pose: true, face: true}
 intent: {window_s: 1.5, decay_half_life_s: 90, min_confidence: 0.35}
+gesture:
+  smoothing_alpha_position: 0.35
+  smoothing_alpha_velocity: 0.5
+  pinch_enter_threshold: 0.35
+  pinch_exit_threshold: 0.55
+  pinch_enter_hold_s: 0.12
+  stroke_max_points: 400
+  stroke_min_point_dist: 0.004
+  shape_min_confidence: 0.45
+  debug_emit_hz: 5.0
+face_calibration: {enabled: true, calibration_duration_s: 3.0}
 scene: {completeness_threshold: 0.6, stability_s: 2.0, regen_diff: 0.25}
 prompting:
   strategy: auto            # auto | template | ollama

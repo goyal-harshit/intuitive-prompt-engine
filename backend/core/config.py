@@ -1,14 +1,22 @@
 """Typed application configuration loaded from config.yaml with env overrides."""
+
 from __future__ import annotations
 
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parents[2]
+
+# Populate os.environ from a .env file for native (non-Docker) runs. Docker
+# already injects env vars via compose; existing os.environ values win either
+# way since load_dotenv() does not override by default.
+load_dotenv(ROOT / ".env")
 
 
 class CameraConfig(BaseModel):
@@ -28,6 +36,23 @@ class IntentConfig(BaseModel):
     window_s: float = 1.5
     decay_half_life_s: float = 90.0
     min_confidence: float = 0.35
+
+
+class GestureConfig(BaseModel):
+    smoothing_alpha_position: float = 0.35
+    smoothing_alpha_velocity: float = 0.5
+    pinch_enter_threshold: float = 0.35
+    pinch_exit_threshold: float = 0.55
+    pinch_enter_hold_s: float = 0.12
+    stroke_max_points: int = 400
+    stroke_min_point_dist: float = 0.004
+    shape_min_confidence: float = 0.45
+    debug_emit_hz: float = 5.0
+
+
+class FaceCalibrationConfig(BaseModel):
+    enabled: bool = True
+    calibration_duration_s: float = 3.0
 
 
 class SceneConfig(BaseModel):
@@ -63,12 +88,22 @@ class ImageGenConfig(BaseModel):
 class ServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
+    )
+    session_ttl_s: float = 1800.0
+    # Requests per minute per client IP for expensive POST endpoints
+    # (session creation, forced generation). 0 disables the limiter — the
+    # local/dev default; set it when exposing the backend publicly.
+    rate_limit_per_minute: int = 0
 
 
 class AppConfig(BaseModel):
     camera: CameraConfig = Field(default_factory=CameraConfig)
     vision: VisionConfig = Field(default_factory=VisionConfig)
     intent: IntentConfig = Field(default_factory=IntentConfig)
+    gesture: GestureConfig = Field(default_factory=GestureConfig)
+    face_calibration: FaceCalibrationConfig = Field(default_factory=FaceCalibrationConfig)
     scene: SceneConfig = Field(default_factory=SceneConfig)
     prompting: PromptingConfig = Field(default_factory=PromptingConfig)
     imagegen: ImageGenConfig = Field(default_factory=ImageGenConfig)
@@ -83,9 +118,19 @@ _ENV_OVERRIDES: dict[str, tuple[str, ...]] = {
     "DATA_DIR": ("data_dir",),
     "SERVER_HOST": ("server", "host"),
     "SERVER_PORT": ("server", "port"),
+    "CORS_ORIGINS": ("server", "cors_origins"),
+    "SESSION_TTL_S": ("server", "session_ttl_s"),
+    "RATE_LIMIT_PER_MINUTE": ("server", "rate_limit_per_minute"),
     "IMAGEGEN_BACKEND": ("imagegen", "backend"),
     "PROMPTING_STRATEGY": ("prompting", "strategy"),
     "OLLAMA_URL": ("prompting", "ollama_url"),
+}
+
+# A handful of overrides target non-string fields; convert the raw env string
+# before it lands in the config mapping instead of leaning on pydantic coercion
+# (which cannot turn a comma-separated string into a list).
+_ENV_TRANSFORMS: dict[str, Any] = {
+    "CORS_ORIGINS": lambda v: [origin.strip() for origin in v.split(",") if origin.strip()],
 }
 
 
@@ -95,12 +140,14 @@ def _apply_env_overrides(raw: dict) -> dict:
         value = os.environ.get(env_var)
         if value is None or value == "":
             continue
+        transform = _ENV_TRANSFORMS.get(env_var)
+        typed_value: Any = transform(value) if transform else value
         node = raw
         for key in path[:-1]:
             node = node.setdefault(key, {})
             if not isinstance(node, dict):  # a scalar in YAML shadowing a section
                 raise ValueError(f"config key {'.'.join(path)} is not a mapping")
-        node[path[-1]] = value
+        node[path[-1]] = typed_value
     return raw
 
 
