@@ -25,11 +25,34 @@ ignore_missing_imports = true    # cv2/mediapipe ship without complete stubs
 warn_unused_ignores = false
 warn_redundant_casts = true
 no_implicit_optional = true
-files = ["backend", "run.py"]
+files = ["backend", "run.py", "tests"]
+
+[[tool.mypy.overrides]]
+# Tightened incrementally per docs/ROADMAP.md Phase 2 — pure-math/rule modules
+# with no I/O are the cheapest place to require full annotations first.
+module = ["backend.intent.*", "backend.scene.*", "backend.gestures.*"]
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+# Tests favor fixtures/inline helpers over annotations; don't fight that.
+module = ["tests.*"]
+disallow_untyped_defs = false
+check_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --cov=backend --cov-report=term-missing --cov-report=xml --cov-fail-under=70"
+asyncio_mode = "auto"
 filterwarnings = [
     "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+branch = true
+omit = [
+    "tests/*",
+    # Thin adapters over a physical webcam / MediaPipe native solutions —
+    # no pure logic to unit-test without camera hardware in CI.
+    "backend/vision/capture.py",
+    "backend/vision/landmarks.py",
 ]
