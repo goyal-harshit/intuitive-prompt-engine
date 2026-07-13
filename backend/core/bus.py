@@ -3,6 +3,7 @@
 Mirrors a broker-style API so a Redis/NATS implementation can replace it
 without changing publishers or subscribers.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +20,11 @@ class EventBus:
 
     def subscribe(self, topic: str, handler: Handler) -> None:
         self._subs[topic].append(handler)
+
+    def unsubscribe(self, topic: str, handler: Handler) -> None:
+        handlers = self._subs.get(topic)
+        if handlers and handler in handlers:
+            handlers.remove(handler)
 
     async def publish(self, topic: str, payload: Any) -> None:
         for handler in self._subs.get(topic, []):
@@ -43,3 +49,7 @@ class Topics:
     GENERATION_DONE = "generation_done"
     STATUS = "status"
     ERROR = "error"
+    DRAW_STROKE = "draw_stroke"  # live fingertip point while drawing
+    DRAW_SHAPE = "draw_shape"  # finalized classified shape
+    DRAW_CLEAR = "draw_clear"  # canvas clear signal
+    GESTURE_DEBUG = "gesture_debug"  # live top-N primitive matches + meaning
