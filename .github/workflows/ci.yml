@@ -47,7 +47,11 @@ jobs:
 
       - name: pip-audit (dependency vulnerability scan)
         if: matrix.python-version == '3.12'
-        run: pip-audit -r requirements.txt
+        # PYSEC-2026-1805 (protobuf): only fixed in protobuf >=5.29.6, but
+        # mediapipe 0.10.14 (pinned for the legacy mp.solutions API) requires
+        # protobuf <5. Not exploitable here: protobuf never parses untrusted
+        # input in this app. Re-evaluate when mediapipe is upgraded.
+        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2026-1805
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'
