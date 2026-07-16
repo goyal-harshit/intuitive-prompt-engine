@@ -1,36 +1,165 @@
 """FastAPI application: REST + WebSocket + static frontend."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import time
+from collections import defaultdict, deque
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from backend.core.bus import EventBus, Topics
 from backend.core.config import get_config
+from backend.core.logging import configure_logging
 from backend.pipeline.orchestrator import PipelineSession
 from backend.storage.repo import Repository
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(name)s %(levelname)s %(message)s")
+configure_logging()
+log = logging.getLogger(__name__)
 
-app = FastAPI(title="GestureGPT", version="0.1.0")
+# Optional shared-secret gate for the REST/WS API. Unset (default) means the
+# API is open, matching today's local/dev-only usage; set API_KEY before
+# exposing the backend beyond localhost.
+API_KEY = os.environ.get("API_KEY") or None
+
 cfg = get_config()
 bus = EventBus()
 repo = Repository(cfg.data_dir)
 sessions: dict[str, PipelineSession] = {}
-FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
+_last_seen: dict[str, float] = {}
+_started_at = time.time()
+FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+APP_VERSION = "0.1.0"
+
+
+async def _sweep_idle_sessions() -> None:
+    """Background TTL sweep: sessions are in-memory and die with the process,
+    so a client that never sends DELETE would otherwise leak a camera/thread
+    forever. Runs for the app's lifetime; cancelled on shutdown."""
+    ttl = cfg.server.session_ttl_s
+    while True:
+        await asyncio.sleep(60)
+        now = time.time()
+        stale = [(sid, now - last) for sid, last in _last_seen.items() if now - last > ttl]
+        for sid, idle_s in stale:
+            session = sessions.pop(sid, None)
+            _last_seen.pop(sid, None)
+            if session:
+                log.info(
+                    "session %s idle for >%.0fs, stopping",
+                    sid,
+                    ttl,
+                    extra={"session_id": sid, "idle_s": round(idle_s, 1)},
+                )
+                await session.stop()
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    sweep_task = asyncio.create_task(_sweep_idle_sessions())
+    try:
+        yield
+    finally:
+        sweep_task.cancel()
+
+
+app = FastAPI(title="GestureGPT", version=APP_VERSION, lifespan=_lifespan)
+
+# Sliding one-minute window of request timestamps per client IP. Guards the
+# endpoints that allocate real resources (camera/pipeline threads, image
+# generation). In-memory on purpose: sessions themselves are in-memory, so a
+# multi-process deployment already needs a fronting proxy — put real rate
+# limiting there and leave this as the single-process safety net.
+_rate_window: dict[str, deque[float]] = defaultdict(deque)
+
+
+@app.middleware("http")
+async def _rate_limit(request: Request, call_next):  # noqa: ANN001, ANN201
+    limit = cfg.server.rate_limit_per_minute
+    if limit > 0 and request.method == "POST" and request.url.path.startswith("/api/"):
+        ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        window = _rate_window[ip]
+        while window and now - window[0] > 60:
+            window.popleft()
+        if len(window) >= limit:
+            retry_after = max(1, int(61 - (now - window[0])))
+            return JSONResponse(
+                {
+                    "error": {
+                        "code": "RATE_LIMITED",
+                        "message": f"limit of {limit} requests/minute exceeded; retry later",
+                    }
+                },
+                status_code=429,
+                headers={"Retry-After": str(retry_after)},
+            )
+        window.append(now)
+    return await call_next(request)
+
+
+# Registered after the rate limiter so auth wraps outside it: a request with a
+# bad key is rejected with 401 before it can consume rate-limit budget.
+@app.middleware("http")
+async def _require_api_key(request: Request, call_next):  # noqa: ANN001, ANN201
+    if API_KEY and request.url.path.startswith("/api") and request.url.path != "/api/health":
+        if request.headers.get("X-API-Key") != API_KEY:
+            return JSONResponse(
+                {"error": {"code": "UNAUTHORIZED", "message": "invalid or missing X-API-Key"}},
+                status_code=401,
+            )
+    return await call_next(request)
+
+
+# Registered after the API-key middleware so it wraps outermost: CORS headers
+# land on every response, including a 401 from the check above. Otherwise a
+# browser reports a CORS failure instead of surfacing the real 401.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cfg.server.cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def _touch(session_id: str) -> None:
+    _last_seen[session_id] = time.time()
 
 
 # ---------- REST ----------
 
+
+class HealthResponse(BaseModel):
+    """Formal health schema — uptime monitors and deploy smoke tests rely on it."""
+
+    status: str
+    version: str
+    uptime_s: float
+    active_sessions: int
+    imagegen: str
+    prompting: str
+
+
 @app.get("/api/health")
-async def health() -> dict:
-    return {"status": "ok", "imagegen": cfg.imagegen.backend,
-            "prompting": cfg.prompting.strategy}
+async def health() -> HealthResponse:
+    return HealthResponse(
+        status="ok",
+        version=APP_VERSION,
+        uptime_s=round(time.time() - _started_at, 1),
+        active_sessions=len(sessions),
+        imagegen=cfg.imagegen.backend,
+        prompting=cfg.prompting.strategy,
+    )
 
 
 @app.post("/api/session")
@@ -38,6 +167,7 @@ async def create_session() -> dict:
     session = PipelineSession(cfg, bus, repo)
     await session.start()
     sessions[session.id] = session
+    _touch(session.id)
     return {"session_id": session.id}
 
 
@@ -46,6 +176,7 @@ async def end_session(session_id: str) -> dict:
     session = _get(session_id)
     await session.stop()
     del sessions[session_id]
+    _last_seen.pop(session_id, None)
     return {"ended": session_id}
 
 
@@ -77,8 +208,7 @@ async def frame(session_id: str) -> Response:
     jpeg = session.latest_jpeg
     if not jpeg:
         return Response(status_code=204)  # camera warming up
-    return Response(content=jpeg, media_type="image/jpeg",
-                    headers={"Cache-Control": "no-store"})
+    return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/session/{session_id}/video")
@@ -96,9 +226,10 @@ async def video_feed(session_id: str) -> StreamingResponse:
             jpeg = session.latest_jpeg
             if jpeg:
                 blank_waits = 0
-                yield (b"--frame\r\nContent-Type: image/jpeg\r\n"
-                       b"Content-Length: " + str(len(jpeg)).encode() + b"\r\n\r\n"
-                       + jpeg + b"\r\n")
+                yield (
+                    b"--frame\r\nContent-Type: image/jpeg\r\n"
+                    b"Content-Length: " + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg + b"\r\n"
+                )
             else:
                 # Camera not producing yet (warm-up) or shutting down.
                 blank_waits += 1
@@ -106,8 +237,7 @@ async def video_feed(session_id: str) -> StreamingResponse:
                     break
             await asyncio.sleep(0.04)  # ~25 fps ceiling
 
-    return StreamingResponse(
-        frames(), media_type="multipart/x-mixed-replace; boundary=frame")
+    return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.get("/api/images/{image_id}")
@@ -120,30 +250,50 @@ async def get_image(image_id: str) -> FileResponse:
 
 @app.get("/api/config")
 async def get_app_config() -> dict:
-    return cfg.model_dump(mode="json")
+    # data_dir is a host filesystem path — not useful to a client and not
+    # something to expose if this backend is reachable beyond localhost.
+    return cfg.model_dump(mode="json", exclude={"data_dir"})
 
 
 def _get(session_id: str) -> PipelineSession:
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(404, "session not found")
+    _touch(session_id)
     return session
 
 
 # ---------- WebSocket ----------
 
-_WS_TOPICS = (Topics.FEATURES, Topics.PRIMITIVE, Topics.INTENT, Topics.SCENE_UPDATE,
-              Topics.GENERATION_STARTED, Topics.GENERATION_DONE, Topics.STATUS,
-              Topics.ERROR)
+_WS_TOPICS = (
+    Topics.FEATURES,
+    Topics.PRIMITIVE,
+    Topics.INTENT,
+    Topics.SCENE_UPDATE,
+    Topics.GENERATION_STARTED,
+    Topics.GENERATION_DONE,
+    Topics.STATUS,
+    Topics.ERROR,
+    Topics.DRAW_STROKE,
+    Topics.DRAW_SHAPE,
+    Topics.DRAW_CLEAR,
+    Topics.GESTURE_DEBUG,
+)
 
 
 @app.websocket("/ws/{session_id}")
 async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
     await ws.accept()
+    # Browsers can't set custom headers on a WebSocket handshake, so the key
+    # travels as a query param here instead of X-API-Key.
+    if API_KEY and ws.query_params.get("api_key") != API_KEY:
+        await ws.close(code=4401)
+        return
     session = sessions.get(session_id)
     if not session:
         await ws.close(code=4004)
         return
+    _touch(session_id)
 
     queue: asyncio.Queue = asyncio.Queue(maxsize=200)
 
@@ -151,10 +301,12 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
         async def handler(payload) -> None:  # noqa: ANN001
             if not queue.full():
                 queue.put_nowait({"type": topic, "data": payload})
+
         return handler
 
-    for topic in _WS_TOPICS:
-        bus.subscribe(topic, make_handler(topic))
+    handlers = {topic: make_handler(topic) for topic in _WS_TOPICS}
+    for topic, handler in handlers.items():
+        bus.subscribe(topic, handler)
 
     async def sender() -> None:
         while True:
@@ -165,16 +317,21 @@ async def ws_endpoint(ws: WebSocket, session_id: str) -> None:
         while True:
             msg = await ws.receive_json()
             kind = msg.get("type")
+            _touch(session_id)
             if kind == "pause":
                 session.pause(True)
             elif kind == "resume":
                 session.pause(False)
             elif kind == "reset_scene":
                 session.reset_scene()
+            elif kind == "draw_clear":
+                session.clear_draw()
     except WebSocketDisconnect:
         pass
     finally:
         send_task.cancel()
+        for topic, handler in handlers.items():
+            bus.unsubscribe(topic, handler)
 
 
 # ---------- frontend ----------

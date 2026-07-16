@@ -4,6 +4,7 @@ Picks the first free TCP port at/after the configured one so the app never
 fails to boot just because something else already owns 8000, then opens the
 browser on the URL it actually bound to.
 """
+
 from __future__ import annotations
 
 import os
