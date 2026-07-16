@@ -66,8 +66,11 @@ All stages communicate through typed dataclasses/Pydantic models on an in-proces
 |---|---|---|---|
 | `vision.capture` | device index | BGR frames | `FrameSource` ABC |
 | `vision.landmarks` | frame | `LandmarkFrame` | `LandmarkExtractor` ABC |
+| `vision.calibration` | raw face signals (first N s) | per-session neutral baseline | — (session-scoped, no persistence) |
 | `gestures.features` | `LandmarkFrame` stream | `GestureFeatureVector` | pure functions |
 | `gestures.sequence` | feature stream | `SequenceSegment` (motion primitives) | `SequenceSegmenter` ABC |
+| `gestures.draw` | feature stream (pinch) | draw-mode transitions + `StrokePoint` buffer | pure functions |
+| `gestures.shape` | finished stroke points | `DrawnShape` (circle/line/zigzag/freeform) | pure functions |
 | `intent.engine` | segments + history | `IntentFrame[]` | `IntentModel` ABC |
 | `scene.graph` | `IntentFrame[]` | `SceneGraph` | — (core state) |
 | `prompting.*` | `SceneGraph` | `OptimizedPrompt` | `PromptGenerator` ABC |

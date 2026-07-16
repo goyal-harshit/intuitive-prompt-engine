@@ -6,6 +6,8 @@
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg?logo=docker&logoColor=white)](docker-compose.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
+[![Frontend: Vite + React + TS](https://img.shields.io/badge/frontend-vite%20%2B%20react%20%2B%20ts-646CFF.svg?logo=vite&logoColor=white)](frontend)
+[![codecov](https://codecov.io/gh/goyal-harshit/intuitive-prompt-engine/branch/main/graph/badge.svg)](https://codecov.io/gh/goyal-harshit/intuitive-prompt-engine)
 
 **An intent-driven multimodal prompt generation system.** IntuitivePromptEngine watches your hands, posture, and expression through a standard webcam, infers your *creative intention* — not commands — and continuously compiles an evolving Scene Graph of your imagination into optimized prompts for generative image models. **You never type a prompt.**
 
@@ -20,7 +22,7 @@
 
 ```mermaid
 flowchart LR
-    subgraph Frontend["Frontend (zero-build SPA)"]
+    subgraph Frontend["Frontend (Vite + React + TypeScript)"]
         UI["Live features · Scene graph · Image"]
     end
     subgraph Backend["Backend (FastAPI + WebSocket)"]
@@ -76,7 +78,9 @@ docker compose up --build
 ```
 
 - Frontend: <http://localhost:8080>
-- API: <http://localhost:8000/api/health> (interactive docs at `/docs`)
+- API: <http://localhost:8010/api/health> (interactive docs at `/docs`)
+
+If those ports collide with another project's containers on your machine, copy [`.env.example`](.env.example) to `.env` and change `BACKEND_PORT` / `FRONTEND_PORT` / `OLLAMA_PORT`.
 
 Enable a local Ollama LLM for prompt optimization:
 
@@ -102,13 +106,18 @@ Runtime settings live in [`config.yaml`](config.yaml). For deployment, the setti
 
 | Env var | Overrides | Default | Notes |
 |---|---|---|---|
-| `IMAGEGEN_BACKEND` | `imagegen.backend` | `pollinations` | `pollinations` \| `huggingface` \| `comfyui` |
+| `IMAGEGEN_BACKEND` | `imagegen.backend` | `pollinations` | `pollinations` \| `huggingface` \| `comfyui`. Preferred backend only — if it errors, the app auto-falls-back to any other usable backend (e.g. `huggingface` if `HF_TOKEN` is set) before failing. |
 | `PROMPTING_STRATEGY` | `prompting.strategy` | `auto` | `auto` \| `template` \| `ollama` |
 | `OLLAMA_URL` | `prompting.ollama_url` | `http://127.0.0.1:11434` | Ollama endpoint for LLM prompting |
 | `HF_TOKEN` | — | _unset_ | Hugging Face Inference token (huggingface backend) |
 | `SERVER_HOST` | `server.host` | `127.0.0.1` | `0.0.0.0` in the container |
 | `SERVER_PORT` | `server.port` | `8000` | `run.py` also honors `PORT` |
 | `DATA_DIR` | `data_dir` | `./data` | SQLite DB + generated images; mounted as a volume in Docker |
+| `CORS_ORIGINS` | `server.cors_origins` | Vite dev origins | Comma-separated allowed browser origins; add your GitHub Pages origin when deploying |
+| `API_KEY` | — | _unset_ | Shared secret for `/api/*` (`X-API-Key` header) and `/ws/{id}` (`?api_key=`); unset = open API (local/dev default) |
+| `SESSION_TTL_S` | `server.session_ttl_s` | `1800` | Seconds of inactivity before an abandoned session's camera/thread is auto-stopped |
+
+Native (non-Docker) runs also load a `.env` file in the project root automatically if present (via `python-dotenv`), so `.env.example` works the same way outside Docker.
 
 ---
 
@@ -147,16 +156,20 @@ backend/
   pipeline/   orchestrator wiring
   app/        FastAPI + WebSocket
   core/       typed config (+ env overrides) and the event bus
-frontend/     zero-build SPA (live features, scene graph, image)
+frontend/     Vite + React + TypeScript + Tailwind SPA (live features, scene graph, image)
+  src/        components, hooks (useWebSocket, useSession), generated API types
+  legacy/     archived pre-migration zero-build SPA (kept for reference)
 docs/         architecture & research design docs
 tests/        unit + integration tests
-Dockerfile · docker/ · docker-compose.yml     containerized stack
-.github/workflows/  ci.yml (lint/type/test/build) · deploy.yml (Pages)
+Dockerfile · docker/ · docker-compose.yml     containerized stack (docker/frontend.Dockerfile builds the nginx-served SPA)
+.github/workflows/  ci.yml (backend + frontend lint/type/test/build) · deploy.yml (Pages)
 ```
 
 ---
 
 ## Development & testing
+
+**Backend:**
 
 ```bash
 pip install -r requirements-dev.txt
@@ -165,14 +178,27 @@ mypy              # type-check
 pytest            # unit + integration tests
 ```
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs lint, type-check and the test suite on Python 3.10–3.12, and builds + smoke-tests the Docker stack on every push and PR. See [CONTRIBUTING.md](CONTRIBUTING.md).
+**Frontend** (in `frontend/`):
+
+```bash
+npm install
+npm run dev              # Vite dev server on :5173, proxies /api and /ws to :8000
+npm run lint             # ESLint
+npm run format:check     # Prettier
+npm run test             # Vitest + Testing Library
+npm run build            # production build → dist/
+npm run generate-types   # regenerate src/types/api.d.ts from the backend's OpenAPI schema
+```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs lint, type-check and the test suite on Python 3.10–3.12, runs the frontend's lint/format/test/build in a parallel job, and builds + smoke-tests the Docker stack on every push and PR. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## Deployment
 
-- **Frontend → GitHub Pages.** [`deploy.yml`](.github/workflows/deploy.yml) publishes `frontend/` on push to `main`. On Pages, click ⚙️ **Settings** in the topbar to point the static UI at your local backend URL (default `http://localhost:8000`).
+- **Frontend → GitHub Pages.** [`deploy.yml`](.github/workflows/deploy.yml) publishes the built `frontend/dist` on push to `main` after CI passes. On Pages, click ⚙️ **Settings** in the topbar to point the static UI at your local backend URL (default `http://localhost:8000`).
 - **Backend → any container host.** Build the image (`docker build -t ipe-backend .`) or use `docker compose` on a VM/host with the `engine-data` volume for persistence. Set `SERVER_HOST=0.0.0.0` (already the container default) and mount `/data`.
+- **Hardening a public backend:** set `API_KEY`, `CORS_ORIGINS`, and `RATE_LIMIT_PER_MINUTE`. Full walkthrough of every topology (native, Docker, Pages + remote): [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Vulnerability reports: [SECURITY.md](SECURITY.md).
 
 ---
 

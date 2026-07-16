@@ -10,9 +10,9 @@
 7. FastAPI + WebSocket + SPA frontend; SQLite persistence. *(dep: 4–6)* → runnable app
 
 ## Phase 2 — Robustness
-- Unit tests for feature math and fusion (pytest, synthetic landmark fixtures)
-- Session replay tool (`tools/replay.py`) from SQLite event log
-- Calibration step (user hand-size / reach normalization)
+- ✅ Unit tests for feature math and fusion (pytest, synthetic landmark fixtures) — 145 tests, 91% coverage across gestures/orchestrator/websocket/imagegen/prompting
+- Session replay tool (`tools/replay.py`) from SQLite event log — deferred to Phase 7 of the industry-standard plan
+- ✅ Face mood calibration (per-session neutral baseline for valence/arousal, `vision/calibration.py`) — hand-size/reach normalization for gesture feature math specifically remains deferred to Phase 7
 
 ## Phase 3 — Smarter intent
 - Replace prototype matching with a small temporal model (1D-CNN/GRU on feature windows, PyTorch, trained on recorded sessions)
@@ -30,8 +30,9 @@
 - User studies: task completion vs. typed prompting baseline
 
 ## Phase 6 — Product polish
-- Vite + React + Tailwind frontend (replace static SPA; WebSocket contract unchanged)
-- Docker compose (backend + ComfyUI), CI (ruff, mypy, pytest) via GitHub Actions
+- ✅ Vite + React + TypeScript + Tailwind frontend (replaced static SPA; WebSocket contract unchanged; legacy SPA archived to `frontend/legacy/`; ESLint/Prettier/Vitest quality gates; multi-stage Docker build; native + containerized static serving)
+- ✅ CI/CD professionalization (industry-standard plan Phase 4): Pages deploy gated on CI success via `workflow_run`; Dependabot for pip/npm/GitHub Actions; `pip-audit` + `npm audit` CI steps; pre-commit hooks (ruff, mypy, prettier); `.editorconfig`; `scripts/dev.{sh,ps1}`; Codecov coverage badge; `CHANGELOG.md` + tag-triggered GitHub Release workflow
+- Docker compose (backend + ComfyUI), CI (ruff, mypy, pytest) via GitHub Actions — backend covered; frontend lint/type-check/test/build now runs as its own CI job
 - Plugin system for ontology packs (architecture, character design, etc.)
 
 MVP = Phase 1. Everything else is enhancement; interfaces already anticipate it.
