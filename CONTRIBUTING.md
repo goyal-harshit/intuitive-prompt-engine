@@ -81,4 +81,9 @@ new backend by implementing the interface and wiring it in the relevant
   network in the merge logic (see `tests/test_scene_graph.py`).
 - New public config lives in `backend/core/config.py`; deployment knobs get an
   entry in `_ENV_OVERRIDES` and a line in `.env.example`.
-- Add or update tests for behavior changes.
+- Gesture→intent rules belong in ontology packs (`plugins/*/ontology.yaml`),
+  not code — see the authoring guide in `docs/GESTURE_ONTOLOGY.md`. If you
+  change the built-in tables in `backend/intent/ontology.py`, regenerate the
+  default pack (`tests/test_ontology_pack.py` enforces they stay identical).
+- Add or update tests for behavior changes. Debug pipeline behavior after the
+  fact with `python tools/replay.py show <session_id>`.
