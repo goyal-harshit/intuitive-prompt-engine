@@ -139,6 +139,8 @@ jobs:
             [ "$status" = "healthy" ] && break
             sleep 3
           done
-          curl -fsS http://localhost:8000/api/health
+          docker compose logs backend --tail 50
+          # Compose maps the API to host port 8010 by default (see .env.example).
+          curl -fsS http://localhost:8010/api/health
           curl -fsS -o /dev/null -w "frontend HTTP %{http_code}\n" http://localhost:8080/
           docker compose down -v
