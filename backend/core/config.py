@@ -77,6 +77,7 @@ class HFConfig(BaseModel):
 class ComfyUIConfig(BaseModel):
     url: str = "http://127.0.0.1:8188"
     workflow: str = "sdxl_default"
+    timeout_s: float = 120.0  # queue + sampling can be slow on modest GPUs
 
 
 class ImageGenConfig(BaseModel):

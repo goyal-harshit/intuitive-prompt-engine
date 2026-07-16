@@ -42,10 +42,16 @@ class _FakeResponse:
 
 
 class _FakeAsyncClient:
-    """Drop-in for httpx.AsyncClient that records calls instead of hitting the network."""
+    """Drop-in for httpx.AsyncClient that records calls instead of hitting the network.
+
+    ``routes`` maps a URL substring to a response (first match wins) so
+    multi-endpoint flows like ComfyUI's queue→poll→download can be scripted;
+    unmatched URLs get the catch-all ``response``.
+    """
 
     calls: list[tuple[str, str, dict]] = []
     response: _FakeResponse = _FakeResponse()
+    routes: list[tuple[str, _FakeResponse]] = []
 
     def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
         pass
@@ -56,20 +62,46 @@ class _FakeAsyncClient:
     async def __aexit__(self, *exc) -> bool:  # noqa: ANN002
         return False
 
-    async def get(self, url: str, **kwargs) -> _FakeResponse:  # noqa: ANN003
-        _FakeAsyncClient.calls.append(("GET", url, kwargs))
+    def _respond(self, method: str, url: str, kwargs: dict) -> _FakeResponse:
+        _FakeAsyncClient.calls.append((method, url, kwargs))
+        for pattern, response in _FakeAsyncClient.routes:
+            if pattern in url:
+                return response
         return _FakeAsyncClient.response
 
+    async def get(self, url: str, **kwargs) -> _FakeResponse:  # noqa: ANN003
+        return self._respond("GET", url, kwargs)
+
     async def post(self, url: str, **kwargs) -> _FakeResponse:  # noqa: ANN003
-        _FakeAsyncClient.calls.append(("POST", url, kwargs))
-        return _FakeAsyncClient.response
+        return self._respond("POST", url, kwargs)
+
+
+class _FakeSyncClient:
+    """Fake for httpx.Client — only used by ComfyUI's reachability probe.
+
+    Defaults to "server not running" so factory tests never depend on (or
+    touch) a real local ComfyUI.
+    """
+
+    reachable: bool = False
+
+    def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
+        pass
+
+    def get(self, url: str, **kwargs) -> _FakeResponse:  # noqa: ANN003
+        if not _FakeSyncClient.reachable:
+            raise httpx.ConnectError("connection refused")
+        return _FakeResponse()
 
 
 @pytest.fixture(autouse=True)
 def _fake_httpx(monkeypatch):
     _FakeAsyncClient.calls = []
     _FakeAsyncClient.response = _FakeResponse()
+    _FakeAsyncClient.routes = []
+    _FakeSyncClient.reachable = False
     monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(httpx, "Client", _FakeSyncClient)
     yield
 
 
@@ -127,12 +159,77 @@ async def test_huggingface_sends_bearer_token_and_params(tmp_path, monkeypatch) 
     assert kwargs["json"]["parameters"]["width"] == 768
 
 
-# ---------- ComfyUI (Phase 4 placeholder) ----------
+# ---------- ComfyUI ----------
 
 
-async def test_comfyui_adapter_is_not_yet_implemented(tmp_path) -> None:
+def _comfy_history(prompt_id: str = "p1") -> dict:
+    return {
+        prompt_id: {
+            "status": {"status_str": "success"},
+            "outputs": {
+                "9": {"images": [{"filename": "gg_1.png", "subfolder": "", "type": "output"}]}
+            },
+        }
+    }
+
+
+def test_comfyui_unreachable_server_fails_fast(tmp_path) -> None:
+    with pytest.raises(RuntimeError, match="not reachable"):
+        ComfyUIGenerator(tmp_path, ComfyUIConfig())
+
+
+def test_comfyui_unknown_workflow_fails_fast(tmp_path) -> None:
+    _FakeSyncClient.reachable = True
+    with pytest.raises(RuntimeError, match="workflow"):
+        ComfyUIGenerator(tmp_path, ComfyUIConfig(workflow="does-not-exist"))
+
+
+async def test_comfyui_queue_poll_download_flow(tmp_path) -> None:
+    _FakeSyncClient.reachable = True
+    _FakeAsyncClient.routes = [
+        ("/prompt", _FakeResponse(json_data={"prompt_id": "p1"})),
+        ("/history/p1", _FakeResponse(json_data=_comfy_history())),
+        ("/view", _FakeResponse(content=b"comfy-png")),
+    ]
     gen = ComfyUIGenerator(tmp_path, ComfyUIConfig())
-    with pytest.raises(NotImplementedError):
+    img = await gen.generate(_prompt(seed=7), 640, 480)
+
+    assert img.backend == "comfyui"
+    assert Path(img.path).read_bytes() == b"comfy-png"
+
+    queue_call = next(c for c in _FakeAsyncClient.calls if c[0] == "POST" and "/prompt" in c[1])
+    workflow = queue_call[2]["json"]["prompt"]
+    assert workflow["6"]["inputs"]["text"] == "a red fox in a forest"  # positive
+    assert "blurry" in workflow["7"]["inputs"]["text"]  # negative default
+    assert workflow["5"]["inputs"] == {"batch_size": 1, "width": 640, "height": 480}
+    assert workflow["3"]["inputs"]["seed"] == 7
+
+    view_call = next(c for c in _FakeAsyncClient.calls if "/view" in c[1])
+    assert view_call[2]["params"]["filename"] == "gg_1.png"
+
+
+async def test_comfyui_workflow_error_raises(tmp_path) -> None:
+    _FakeSyncClient.reachable = True
+    _FakeAsyncClient.routes = [
+        ("/prompt", _FakeResponse(json_data={"prompt_id": "p1"})),
+        (
+            "/history/p1",
+            _FakeResponse(json_data={"p1": {"status": {"status_str": "error"}, "outputs": {}}}),
+        ),
+    ]
+    gen = ComfyUIGenerator(tmp_path, ComfyUIConfig())
+    with pytest.raises(RuntimeError, match="workflow failed"):
+        await gen.generate(_prompt(), 512, 512)
+
+
+async def test_comfyui_polling_times_out(tmp_path) -> None:
+    _FakeSyncClient.reachable = True
+    _FakeAsyncClient.routes = [
+        ("/prompt", _FakeResponse(json_data={"prompt_id": "p1"})),
+        ("/history/p1", _FakeResponse(json_data={})),  # never produces outputs
+    ]
+    gen = ComfyUIGenerator(tmp_path, ComfyUIConfig(timeout_s=0.2))
+    with pytest.raises(RuntimeError, match="timed out"):
         await gen.generate(_prompt(), 512, 512)
 
 
