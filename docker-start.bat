@@ -48,7 +48,9 @@ REM ---- 3. start the stack -------------------------------------------------
 echo [3/3] Starting the stack...
 echo.
 echo   Frontend : http://localhost:8080
-echo   API      : http://localhost:8000/api/health   (docs at /docs)
+echo   API      : http://localhost:8010/api/health   (docs at /docs)
+echo   ^(Ports collide with another project? Copy .env.example to .env and
+echo    change BACKEND_PORT / FRONTEND_PORT / OLLAMA_PORT.^)
 echo   Press CTRL+C to stop, then run: docker compose down
 echo.
 docker compose up

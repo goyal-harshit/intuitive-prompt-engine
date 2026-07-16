@@ -1,10 +1,14 @@
-# ---- IntuitivePromptEngine frontend (static SPA behind nginx) --------------
-# The SPA has no build step, so we just copy it into nginx and drop in a config
-# that reverse-proxies /api and /ws to the backend container.
-FROM nginx:1.27-alpine
+# ---- IntuitivePromptEngine frontend (Vite build served by nginx) -----------
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
 
+FROM nginx:1.27-alpine
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY frontend/ /usr/share/nginx/html/
+COPY --from=build /app/dist/ /usr/share/nginx/html/
 
 EXPOSE 80
 

@@ -14,5 +14,7 @@ data
 docs
 tests
 node_modules
+frontend/dist
+frontend/coverage
 *.md
 !README.md
