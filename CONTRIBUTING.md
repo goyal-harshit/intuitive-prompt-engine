@@ -5,11 +5,31 @@ project, but issues and pull requests are welcome.
 
 ## Development setup
 
+**Backend:**
+
 ```bash
 python -m venv .venv
 .venv\Scripts\activate            # Windows  (Linux/macOS: source .venv/bin/activate)
 pip install -r requirements-dev.txt
+pre-commit install                # optional but recommended — runs ruff/mypy/prettier on staged files
+python run.py                     # http://127.0.0.1:8000
 ```
+
+**Frontend** (separate terminal, in `frontend/`):
+
+```bash
+npm install
+npm run dev                       # http://localhost:5173, proxies /api and /ws to :8000
+```
+
+Run both together to work on the UI against a live backend, or use the convenience script that starts both and stops both on Ctrl+C: `./scripts/dev.sh` (Linux/macOS) or `./scripts/dev.ps1` (Windows PowerShell). If you change any backend Pydantic models/routes that affect the API shape, regenerate the frontend's TypeScript types afterwards:
+
+```bash
+cd frontend
+npm run generate-types            # backend must be running; writes src/types/api.d.ts
+```
+
+Do not hand-edit `frontend/src/types/api.d.ts` — it's generated and excluded from Prettier.
 
 ## Before you push
 
@@ -21,6 +41,23 @@ ruff check .      # lint
 mypy              # type-check
 pytest            # unit + integration tests
 ```
+
+A parallel CI job does the same for the frontend (in `frontend/`):
+
+```bash
+npm run lint            # ESLint
+npm run format:check    # Prettier
+npm run test            # Vitest + Testing Library
+npm run build            # tsc -b && vite build
+```
+
+When adding a frontend component or hook, add a corresponding Vitest spec (see `src/hooks/useSession.test.ts` or `src/components/ErrorBanner.test.tsx` for patterns) and check basic keyboard/aria accessibility (dialogs need `role`, focus handling, and a dismiss affordance — see `SettingsModal.tsx`).
+
+**PR checklist:**
+- [ ] Backend and/or frontend tests updated for behavior changes
+- [ ] `frontend/src/types/api.d.ts` regenerated if the API contract changed
+- [ ] Docs updated (`README.md`, `docs/API.md`, `docs/ROADMAP.md`) if behavior or setup steps changed
+- [ ] No new accessibility regressions in touched UI (keyboard nav, `aria-*`, focus trapping in modals)
 
 For Docker changes, verify the stack builds and boots:
 
