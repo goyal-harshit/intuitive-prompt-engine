@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/goyal-harshit/intuitive-prompt-engine/security/advisories/new
+    about: Please report security issues privately via GitHub security advisories, not public issues.

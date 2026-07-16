@@ -1,0 +1,50 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: Started a session, raised my right hand, expected an intent to appear but the panel stayed empty.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. python run.py
+        2. Click "Start session"
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: run-mode
+    attributes:
+      label: How are you running it?
+      options:
+        - Native (python run.py)
+        - Native backend + Vite dev frontend
+        - Docker Compose
+        - GitHub Pages frontend + remote backend
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and Python version
+      placeholder: Windows 11 / Python 3.11
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Backend console output and/or browser devtools console errors. Automatically formatted as code.
+      render: text
