@@ -1,0 +1,103 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-app-bg: #0a0d13;
+  --color-app-bg-2: #0e131b;
+  --color-panel: #141a24;
+  --color-panel-2: #1a212d;
+  --color-border: #232c3a;
+  --color-border-soft: #1c242f;
+  --color-text: #e8eef6;
+  --color-muted: #8b96a8;
+  --color-muted-2: #5c6675;
+  --color-accent: #6ea8ff;
+  --color-accent-2: #a980ff;
+  --color-ok: #3fd07a;
+  --color-err: #ff6b6b;
+  --color-busy: #ffbf47;
+
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgb(110 168 255 / 0.1), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgb(169 128 255 / 0.1), transparent 55%),
+      var(--color-app-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  .brand-gradient-text {
+    background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .brand-gradient-bg {
+    background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes slidein {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
