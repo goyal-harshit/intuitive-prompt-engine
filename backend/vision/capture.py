@@ -1,5 +1,6 @@
 """Frame acquisition. `FrameSource` abstracts the camera so tests can inject
 recorded frames and a future browser-stream source can replace OpenCV."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -43,7 +44,8 @@ class OpenCVCamera(FrameSource):
         if self._cap is None:
             raise RuntimeError(
                 f"Camera {cfg.index} unavailable — it may be in use by another app "
-                f"(Zoom, Teams, Camera) or blocked by Windows camera privacy settings")
+                f"(Zoom, Teams, Camera) or blocked by Windows camera privacy settings"
+            )
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, cfg.width)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cfg.height)
         self._cap.set(cv2.CAP_PROP_FPS, cfg.fps)

@@ -3,6 +3,7 @@
 Stateless per-frame geometry + stateful temporal derivatives over a sliding
 window. Pure math, no ML, fully unit-testable with synthetic landmarks.
 """
+
 from __future__ import annotations
 
 import math
@@ -10,6 +11,7 @@ from collections import deque
 
 import numpy as np
 
+from backend.gestures.filters import EMAVec3Filter
 from backend.gestures.schema import GestureFeatureVector
 from backend.vision.schema import HandLandmarks, LandmarkFrame
 
@@ -26,6 +28,14 @@ def _hand_openness(hand: HandLandmarks) -> float:
     return float(np.clip(spread / (size * 1.1), 0.0, 1.0))
 
 
+def _pinch_distance(hand: HandLandmarks) -> float:
+    """0 = fingertips touching (pinched), larger = fingers apart. Scale-invariant."""
+    pts = np.asarray(hand.points)
+    palm = pts[WRIST]
+    size = np.linalg.norm(pts[MIDDLE_TIP] - palm) or 1e-6
+    return float(np.linalg.norm(pts[THUMB_TIP] - pts[INDEX_TIP]) / size)
+
+
 def _pointing_scores(hand: HandLandmarks) -> tuple[float, float]:
     pts = np.asarray(hand.points)
     index_ext = np.linalg.norm(pts[INDEX_TIP] - pts[WRIST])
@@ -33,8 +43,8 @@ def _pointing_scores(hand: HandLandmarks) -> tuple[float, float]:
     isolated = float(np.clip((index_ext / (others + 1e-6)) - 1.0, 0.0, 1.0) * 2)
     v = pts[INDEX_TIP] - pts[INDEX_PIP]
     n = np.linalg.norm(v) or 1e-6
-    up = max(0.0, float(-v[1] / n))          # image y is downward
-    fwd = max(0.0, float(-v[2] / n))         # z toward camera is negative in MediaPipe
+    up = max(0.0, float(-v[1] / n))  # image y is downward
+    fwd = max(0.0, float(-v[2] / n))  # z toward camera is negative in MediaPipe
     return isolated * up, isolated * fwd
 
 
@@ -63,10 +73,14 @@ def _spectral_smoothness(speeds: np.ndarray) -> float:
 class FeatureExtractor:
     """Consumes LandmarkFrames, emits GestureFeatureVectors (~ input rate)."""
 
-    def __init__(self, window_s: float = 2.0) -> None:
+    def __init__(self, window_s: float = 2.0, smoothing_alpha: float = 0.35) -> None:
         self._window_s = window_s
         self._hist: deque[tuple[float, dict[str, float]]] = deque()
-        self._wrist_hist: deque[tuple[float, float, float, float]] = deque()  # ts,x,y,z (primary hand)
+        self._wrist_hist: deque[tuple[float, float, float, float]] = (
+            deque()
+        )  # ts,x,y,z (primary hand)
+        self._wrist_filter = EMAVec3Filter(smoothing_alpha)
+        self.last_shoulder_w = 0.35
 
     def update(self, frame: LandmarkFrame) -> GestureFeatureVector:
         f = GestureFeatureVector(ts=frame.ts, hands_visible=len(frame.hands))
@@ -78,9 +92,11 @@ class FeatureExtractor:
             hip_z = (pp[L_HIP][2] + pp[R_HIP][2]) / 2
             sho_z = (pp[L_SHOULDER][2] + pp[R_SHOULDER][2]) / 2
             f.posture_lean = float(np.clip((hip_z - sho_z) * 5, -1, 1))
+        self.last_shoulder_w = shoulder_w
 
         if frame.hands:
             f.openness = float(np.mean([_hand_openness(h) for h in frame.hands]))
+            f.pinch = min(_pinch_distance(h) for h in frame.hands)
             scores = [_pointing_scores(h) for h in frame.hands]
             f.pointing_up = max(s[0] for s in scores)
             f.pointing_forward = max(s[1] for s in scores)
@@ -89,7 +105,8 @@ class FeatureExtractor:
             if len(frame.hands) == 2:
                 f.separation = float(np.linalg.norm(wrists[0][:2] - wrists[1][:2]) / shoulder_w)
             w = wrists[0]
-            self._wrist_hist.append((frame.ts, float(w[0]), float(w[1]), float(w[2])))
+            fx, fy, fz = self._wrist_filter.update(float(w[0]), float(w[1]), float(w[2]))
+            self._wrist_hist.append((frame.ts, fx, fy, fz))
 
         if frame.face:
             f.valence, f.arousal = frame.face.valence, frame.face.arousal

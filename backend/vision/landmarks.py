@@ -1,5 +1,6 @@
 """Landmark extraction behind `LandmarkExtractor` so MediaPipe can be swapped
 (e.g., browser-side landmarks, RTMPose) without touching downstream stages."""
+
 from __future__ import annotations
 
 import math
@@ -7,7 +8,8 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from backend.core.config import VisionConfig
+from backend.core.config import FaceCalibrationConfig, VisionConfig
+from backend.vision.calibration import FaceCalibrator
 from backend.vision.schema import FaceSignals, HandLandmarks, LandmarkFrame, PoseLandmarks
 
 
@@ -22,7 +24,9 @@ class LandmarkExtractor(ABC):
 class MediaPipeExtractor(LandmarkExtractor):
     """Uses MediaPipe legacy Solutions API — models ship with the wheel, no downloads."""
 
-    def __init__(self, cfg: VisionConfig) -> None:
+    def __init__(
+        self, cfg: VisionConfig, face_calibration: FaceCalibrationConfig | None = None
+    ) -> None:
         import cv2
         import mediapipe as mp
 
@@ -30,24 +34,33 @@ class MediaPipeExtractor(LandmarkExtractor):
         self._mp = mp
         self._draw = mp.solutions.drawing_utils
         self._styles = mp.solutions.drawing_styles
+        self._calibrator = FaceCalibrator(face_calibration or FaceCalibrationConfig())
         # Raw MediaPipe results from the most recent extract(), kept only so the
         # overlay renderer can draw dots + connection lines onto the live frame.
         self._last_hands = None
         self._last_pose = None
         self._last_face = None
         self._hands = (
-            mp.solutions.hands.Hands(max_num_hands=2, model_complexity=0,
-                                     min_detection_confidence=0.5, min_tracking_confidence=0.5)
-            if cfg.hands else None
+            mp.solutions.hands.Hands(
+                max_num_hands=2,
+                model_complexity=0,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+            if cfg.hands
+            else None
         )
         self._pose = (
             mp.solutions.pose.Pose(model_complexity=0, min_detection_confidence=0.5)
-            if cfg.pose else None
+            if cfg.pose
+            else None
         )
         self._face = (
-            mp.solutions.face_mesh.FaceMesh(max_num_faces=1, refine_landmarks=False,
-                                            min_detection_confidence=0.5)
-            if cfg.face else None
+            mp.solutions.face_mesh.FaceMesh(
+                max_num_faces=1, refine_landmarks=False, min_detection_confidence=0.5
+            )
+            if cfg.face
+            else None
         )
 
     def extract(self, ts: float, frame_bgr: np.ndarray) -> LandmarkFrame:
@@ -61,25 +74,31 @@ class MediaPipeExtractor(LandmarkExtractor):
             res = self._hands.process(rgb)
             self._last_hands = res
             if res.multi_hand_landmarks:
-                for lm, handed in zip(res.multi_hand_landmarks,
-                                      res.multi_handedness, strict=False):
-                    out.hands.append(HandLandmarks(
-                        handedness=handed.classification[0].label,
-                        points=[(p.x, p.y, p.z) for p in lm.landmark],
-                        score=handed.classification[0].score,
-                    ))
+                for lm, handed in zip(res.multi_hand_landmarks, res.multi_handedness, strict=False):
+                    out.hands.append(
+                        HandLandmarks(
+                            handedness=handed.classification[0].label,
+                            points=[(p.x, p.y, p.z) for p in lm.landmark],
+                            score=handed.classification[0].score,
+                        )
+                    )
         if self._pose:
             res = self._pose.process(rgb)
             self._last_pose = res
             if res.pose_landmarks:
                 out.pose = PoseLandmarks(
-                    points=[(p.x, p.y, p.z) for p in res.pose_landmarks.landmark], score=1.0)
+                    points=[(p.x, p.y, p.z) for p in res.pose_landmarks.landmark], score=1.0
+                )
         if self._face:
             res = self._face.process(rgb)
             self._last_face = res
             if res.multi_face_landmarks:
-                out.face = _face_signals(res.multi_face_landmarks[0])
+                out.face = _face_signals(res.multi_face_landmarks[0], self._calibrator, ts)
         return out
+
+    @property
+    def face_calibrating(self) -> bool:
+        return self._calibrator.calibrating
 
     def annotate(self, frame_bgr: np.ndarray) -> np.ndarray:
         """Return a copy of the frame with the latest landmarks drawn as dots + lines."""
@@ -88,19 +107,28 @@ class MediaPipeExtractor(LandmarkExtractor):
         if self._last_face and self._last_face.multi_face_landmarks:
             for mesh in self._last_face.multi_face_landmarks:
                 self._draw.draw_landmarks(
-                    frame, mesh, mp.solutions.face_mesh.FACEMESH_CONTOURS,
+                    frame,
+                    mesh,
+                    mp.solutions.face_mesh.FACEMESH_CONTOURS,
                     landmark_drawing_spec=None,
-                    connection_drawing_spec=self._styles.get_default_face_mesh_contours_style())
+                    connection_drawing_spec=self._styles.get_default_face_mesh_contours_style(),
+                )
         if self._last_pose and self._last_pose.pose_landmarks:
             self._draw.draw_landmarks(
-                frame, self._last_pose.pose_landmarks, mp.solutions.pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=self._styles.get_default_pose_landmarks_style())
+                frame,
+                self._last_pose.pose_landmarks,
+                mp.solutions.pose.POSE_CONNECTIONS,
+                landmark_drawing_spec=self._styles.get_default_pose_landmarks_style(),
+            )
         if self._last_hands and self._last_hands.multi_hand_landmarks:
             for hand in self._last_hands.multi_hand_landmarks:
                 self._draw.draw_landmarks(
-                    frame, hand, mp.solutions.hands.HAND_CONNECTIONS,
+                    frame,
+                    hand,
+                    mp.solutions.hands.HAND_CONNECTIONS,
                     self._styles.get_default_hand_landmarks_style(),
-                    self._styles.get_default_hand_connections_style())
+                    self._styles.get_default_hand_connections_style(),
+                )
         return frame
 
     def close(self) -> None:
@@ -109,8 +137,9 @@ class MediaPipeExtractor(LandmarkExtractor):
                 sol.close()
 
 
-def _face_signals(mesh) -> FaceSignals:  # noqa: ANN001 — mediapipe proto type
-    """Cheap geometric affect proxies from face-mesh landmarks."""
+def _face_signals(mesh, calibrator: FaceCalibrator, ts: float) -> FaceSignals:  # noqa: ANN001
+    """Cheap geometric affect proxies from face-mesh landmarks, baseline-relative
+    once a short neutral-face calibration window has completed."""
     p = mesh.landmark
 
     def d(a: int, b: int) -> float:
@@ -122,8 +151,11 @@ def _face_signals(mesh) -> FaceSignals:  # noqa: ANN001 — mediapipe proto type
     corner_lift = ((p[13].y - p[61].y) + (p[13].y - p[291].y)) / 2 / face_h
     brow_raise = (d(105, 159) + d(334, 386)) / 2 / face_h
 
-    valence = max(-1.0, min(1.0, corner_lift * 40 + (mouth_w - 0.38) * 3))
-    arousal = max(0.0, min(1.0, brow_raise * 12 + mouth_open * 4 - 0.35))
+    calibrator.observe(ts, corner_lift, mouth_w, brow_raise, mouth_open)
+    corner_lift0, mouth_w0, brow_raise0, mouth_open0 = calibrator.baseline
+
+    valence = max(-1.0, min(1.0, (corner_lift - corner_lift0) * 40 + (mouth_w - mouth_w0) * 3))
+    arousal = max(0.0, min(1.0, (brow_raise - brow_raise0) * 12 + (mouth_open - mouth_open0) * 4))
 
     dx = p[454].x - p[234].x
     yaw = math.degrees(math.atan2(p[454].z - p[234].z, dx if abs(dx) > 1e-6 else 1e-6))
