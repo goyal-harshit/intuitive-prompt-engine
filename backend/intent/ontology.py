@@ -3,6 +3,7 @@
 Pure data. The engine applies context modifiers on top. Phase 5 externalizes
 this to YAML packs; keeping it declarative here makes that a file move.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -24,10 +25,20 @@ ONTOLOGY: dict[P, list[Hypothesis]] = {
     P.EXPAND: [
         Hypothesis("global", "scale", "grand, monumental scale", 0.6),
         Hypothesis("global", "camera_distance", "wide shot", 0.5),
-        Hypothesis("global", "environment", "vast panoramic landscape", 0.4,
-                   conditions={"tempo": (0.0, 0.45)}),
-        Hypothesis("global", "visual_effects", "bursting energy, particles", 0.3,
-                   conditions={"tempo": (0.65, 1.0)}),
+        Hypothesis(
+            "global",
+            "environment",
+            "vast panoramic landscape",
+            0.4,
+            conditions={"tempo": (0.0, 0.45)},
+        ),
+        Hypothesis(
+            "global",
+            "visual_effects",
+            "bursting energy, particles",
+            0.3,
+            conditions={"tempo": (0.65, 1.0)},
+        ),
     ],
     P.CONTRACT: [
         Hypothesis("global", "camera_distance", "intimate close-up", 0.6),
@@ -82,6 +93,26 @@ ONTOLOGY: dict[P, list[Hypothesis]] = {
     ],
 }
 
+# Air-drawn stroke shape → scene-attribute hypotheses. Position/size are folded
+# into the emitted value text at emission time (RuleBasedIntentModel.on_drawn_shape)
+# since they're per-instance, not static like the rest of this table.
+SHAPE_ONTOLOGY: dict[str, list[Hypothesis]] = {
+    "circle": [
+        Hypothesis("new_object", "shape", "round, orb-like form", 0.55, category="drawn_object"),
+        Hypothesis("global", "composition", "centered circular motif", 0.3),
+    ],
+    "line": [
+        Hypothesis("global", "composition", "strong directional line, horizon or edge", 0.45),
+    ],
+    "zigzag": [
+        Hypothesis("global", "motion", "jagged, energetic linework", 0.4),
+        Hypothesis("global", "visual_effects", "lightning-like or angular energy", 0.3),
+    ],
+    "freeform": [
+        Hypothesis("new_object", "shape", "abstract sketched form", 0.3, category="drawn_object"),
+    ],
+}
+
 # Sustained affect/tempo → ambient hypotheses (checked against smoothed features)
 AMBIENT_RULES: list[tuple[str, tuple[float, float], Hypothesis]] = [
     ("tempo", (0.6, 1.0), Hypothesis("global", "mood", "energetic, dramatic", 0.4)),
@@ -89,7 +120,11 @@ AMBIENT_RULES: list[tuple[str, tuple[float, float], Hypothesis]] = [
     ("smoothness", (0.75, 1.0), Hypothesis("global", "lighting", "soft diffuse light", 0.25)),
     ("valence", (0.4, 1.0), Hypothesis("global", "color_palette", "warm vibrant palette", 0.35)),
     ("valence", (-1.0, -0.4), Hypothesis("global", "lighting", "moody chiaroscuro", 0.4)),
-    ("valence", (-1.0, -0.4), Hypothesis("global", "color_palette", "desaturated cold palette", 0.3)),
+    (
+        "valence",
+        (-1.0, -0.4),
+        Hypothesis("global", "color_palette", "desaturated cold palette", 0.3),
+    ),
     ("head_pitch", (12.0, 90.0), Hypothesis("global", "environment", "expansive sky above", 0.25)),
     ("arousal", (0.6, 1.0), Hypothesis("global", "visual_effects", "dramatic atmosphere", 0.25)),
 ]

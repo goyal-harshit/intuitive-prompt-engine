@@ -1,13 +1,22 @@
 """Scene Graph merge semantics — pure logic, no camera or network."""
+
 from backend.core.config import SceneConfig
 from backend.intent.schema import IntentFrame
 from backend.scene.graph import SceneGraphManager
 
 
-def _frame(attribute: str, value: str, conf: float, target: str = "global",
-           category: str | None = None) -> IntentFrame:
-    return IntentFrame(id=f"i_{attribute}_{value[:4]}", ts=0.0, target=target,
-                       category=category, attribute=attribute, value=value, confidence=conf)
+def _frame(
+    attribute: str, value: str, conf: float, target: str = "global", category: str | None = None
+) -> IntentFrame:
+    return IntentFrame(
+        id=f"i_{attribute}_{value[:4]}",
+        ts=0.0,
+        target=target,
+        category=category,
+        attribute=attribute,
+        value=value,
+        confidence=conf,
+    )
 
 
 def test_reinforcement_noisy_or() -> None:
@@ -36,12 +45,14 @@ def test_object_coreference_binds_same_category() -> None:
 def test_completeness_and_readiness() -> None:
     mgr = SceneGraphManager(SceneConfig(stability_s=0.0))
     assert not mgr.ready_to_generate()
-    mgr.apply([
-        _frame("shape", "orb", 0.6, target="new_object", category="celestial"),
-        _frame("environment", "vast landscape", 0.6),
-        _frame("mood", "calm", 0.6),
-        _frame("camera_distance", "wide", 0.6),
-    ])
+    mgr.apply(
+        [
+            _frame("shape", "orb", 0.6, target="new_object", category="celestial"),
+            _frame("environment", "vast landscape", 0.6),
+            _frame("mood", "calm", 0.6),
+            _frame("camera_distance", "wide", 0.6),
+        ]
+    )
     assert mgr.graph.meta.completeness >= 0.6
     assert mgr.ready_to_generate()
 

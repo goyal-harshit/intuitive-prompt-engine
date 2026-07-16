@@ -4,6 +4,7 @@ Merge semantics (noisy-OR reinforcement, confidence×recency conflict
 resolution), temporal decay, object coreference, completeness and diff
 scoring. This is the single source of truth for the user's imagined scene.
 """
+
 from __future__ import annotations
 
 import math
@@ -47,7 +48,9 @@ class SceneGraphManager:
                 self._log(f.ts, "commit", "hold_still commit signal")
                 continue
             target = self._resolve_target(f)
-            attrs = self.graph.globals if target == "global" else self.graph.objects[target].attributes
+            attrs = (
+                self.graph.globals if target == "global" else self.graph.objects[target].attributes
+            )
             key = f.attribute
             mutated |= self._merge(attrs, key, f)
             if target != "global":
@@ -85,8 +88,9 @@ class SceneGraphManager:
     def _merge(self, attrs: dict[str, AttributeValue], key: str, f: IntentFrame) -> bool:
         existing = attrs.get(key)
         if existing is None:
-            attrs[key] = AttributeValue(value=f.value, confidence=f.confidence,
-                                        updated_at=time.time(), provenance=[f.id])
+            attrs[key] = AttributeValue(
+                value=f.value, confidence=f.confidence, updated_at=time.time(), provenance=[f.id]
+            )
             self._log(f.ts, "merged", f"{key} = {f.value} ({f.confidence:.2f})")
             return True
         if existing.value == f.value:  # reinforcement: noisy-OR
@@ -98,8 +102,9 @@ class SceneGraphManager:
         # conflict: winner by decayed confidence
         if f.confidence > self._decayed(existing):
             self._log(f.ts, "conflict_won", f"{key}: '{f.value}' over '{existing.value}'")
-            attrs[key] = AttributeValue(value=f.value, confidence=f.confidence,
-                                        updated_at=time.time(), provenance=[f.id])
+            attrs[key] = AttributeValue(
+                value=f.value, confidence=f.confidence, updated_at=time.time(), provenance=[f.id]
+            )
             return True
         self._log(f.ts, "conflict_lost", f"{key}: kept '{existing.value}'")
         return False

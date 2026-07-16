@@ -1,4 +1,5 @@
 """Runtime models for the intent layer."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel

@@ -1,4 +1,5 @@
 """Scene Graph data models."""
+
 from __future__ import annotations
 
 import time
@@ -6,8 +7,18 @@ import time
 from pydantic import BaseModel, Field
 
 GLOBAL_KEYS = (
-    "environment", "mood", "lighting", "weather", "camera_angle", "camera_distance",
-    "artistic_style", "motion", "scale", "time_of_day", "color_palette", "visual_effects",
+    "environment",
+    "mood",
+    "lighting",
+    "weather",
+    "camera_angle",
+    "camera_distance",
+    "artistic_style",
+    "motion",
+    "scale",
+    "time_of_day",
+    "color_palette",
+    "visual_effects",
 )
 
 
