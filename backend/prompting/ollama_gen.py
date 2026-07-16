@@ -1,4 +1,5 @@
 """LLM prompt strategy via Ollama (Qwen/Mistral). Falls back to template on failure."""
+
 from __future__ import annotations
 
 import logging
@@ -32,19 +33,26 @@ class OllamaPromptGenerator(PromptGenerator):
         description = graph_to_description(graph)
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                r = await client.post(f"{self._cfg.ollama_url}/api/chat", json={
-                    "model": self._cfg.ollama_model,
-                    "messages": [{"role": "system", "content": _SYSTEM},
-                                 {"role": "user", "content": f"Scene: {description}"}],
-                    "stream": False,
-                })
+                r = await client.post(
+                    f"{self._cfg.ollama_url}/api/chat",
+                    json={
+                        "model": self._cfg.ollama_model,
+                        "messages": [
+                            {"role": "system", "content": _SYSTEM},
+                            {"role": "user", "content": f"Scene: {description}"},
+                        ],
+                        "stream": False,
+                    },
+                )
                 r.raise_for_status()
                 text = r.json()["message"]["content"].strip().strip('"')
             if not text:
                 raise ValueError("empty LLM response")
             return OptimizedPrompt(positive=text, generator=self.name)
         except Exception as exc:  # noqa: BLE001 — degrade, never block the pipeline
-            log.warning("Ollama unavailable (%s); using template strategy", exc)
+            log.warning(
+                "Ollama unavailable (%s); using template strategy", exc, extra={"backend": "ollama"}
+            )
             return await self._fallback.generate(graph)
 
 

@@ -3,6 +3,7 @@
 Kept as a first-class adapter so enabling a local GPU later is a config change
 (`imagegen.backend: comfyui`), not an architecture change.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

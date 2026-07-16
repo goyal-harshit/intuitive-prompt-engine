@@ -1,4 +1,5 @@
 """Pollinations.ai adapter — free, keyless, FLUX-based. Default for GPU-less setups."""
+
 from __future__ import annotations
 
 from urllib.parse import quote
@@ -14,8 +15,10 @@ class PollinationsGenerator(ImageGenerator):
     _BASE = "https://image.pollinations.ai/prompt/"
 
     async def _fetch(self, prompt: OptimizedPrompt, width: int, height: int) -> bytes:
-        url = (f"{self._BASE}{quote(prompt.positive[:1500])}"
-               f"?width={width}&height={height}&nologo=true&model=flux")
+        url = (
+            f"{self._BASE}{quote(prompt.positive[:1500])}"
+            f"?width={width}&height={height}&nologo=true&model=flux"
+        )
         if prompt.seed is not None:
             url += f"&seed={prompt.seed}"
         async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:

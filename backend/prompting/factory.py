@@ -1,4 +1,5 @@
 """Prompt strategy selection: explicit config or auto-detection."""
+
 from __future__ import annotations
 
 from backend.core.config import PromptingConfig

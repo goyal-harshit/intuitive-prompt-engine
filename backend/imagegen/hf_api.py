@@ -1,4 +1,5 @@
 """Hugging Face Inference API adapter (SDXL etc.). Requires HF_TOKEN env var."""
+
 from __future__ import annotations
 
 import os
@@ -27,11 +28,16 @@ class HuggingFaceGenerator(ImageGenerator):
             r = await client.post(
                 f"https://api-inference.huggingface.co/models/{self._cfg.model}",
                 headers=self._headers,
-                json={"inputs": prompt.positive,
-                      "parameters": {"negative_prompt": prompt.negative,
-                                     "guidance_scale": prompt.guidance,
-                                     "num_inference_steps": prompt.steps,
-                                     "width": width, "height": height}},
+                json={
+                    "inputs": prompt.positive,
+                    "parameters": {
+                        "negative_prompt": prompt.negative,
+                        "guidance_scale": prompt.guidance,
+                        "num_inference_steps": prompt.steps,
+                        "width": width,
+                        "height": height,
+                    },
+                },
             )
             r.raise_for_status()
             return r.content

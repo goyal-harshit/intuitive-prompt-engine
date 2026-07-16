@@ -1,4 +1,5 @@
 """Prompt generation strategy interface."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -30,7 +31,9 @@ def graph_to_description(graph: SceneGraph, min_confidence: float = 0.3) -> str:
     """Deterministic natural-language rendering of the graph — shared by all strategies."""
     parts: list[str] = []
     for obj in sorted(graph.objects.values(), key=lambda o: -o.salience):
-        attrs = ", ".join(a.value for a in obj.attributes.values() if a.confidence >= min_confidence)
+        attrs = ", ".join(
+            a.value for a in obj.attributes.values() if a.confidence >= min_confidence
+        )
         parts.append(f"a {obj.category}" + (f" ({attrs})" if attrs else ""))
     for key, a in graph.globals.items():
         if a.confidence >= min_confidence:

@@ -1,4 +1,5 @@
 """Repository: the only module that touches the database (SQLite via SQLAlchemy)."""
+
 from __future__ import annotations
 
 import json
@@ -19,8 +20,9 @@ from backend.storage import models as m
 
 class Repository:
     def __init__(self, data_dir: Path) -> None:
-        self._engine = create_engine(f"sqlite:///{data_dir / 'gesturegpt.db'}",
-                                     connect_args={"check_same_thread": False})
+        self._engine = create_engine(
+            f"sqlite:///{data_dir / 'gesturegpt.db'}", connect_args={"check_same_thread": False}
+        )
         m.Base.metadata.create_all(self._engine)
         self._session_factory = sessionmaker(self._engine, expire_on_commit=False)
 
@@ -41,9 +43,15 @@ class Repository:
 
     def add_gesture(self, session_id: str, seg: SequenceSegment) -> None:
         with self._db() as db:
-            db.add(m.GestureEvent(session_id=session_id, ts=seg.t_end,
-                                  primitive=seg.primitive.value, confidence=seg.confidence,
-                                  params_json=json.dumps(seg.params)))
+            db.add(
+                m.GestureEvent(
+                    session_id=session_id,
+                    ts=seg.t_end,
+                    primitive=seg.primitive.value,
+                    confidence=seg.confidence,
+                    params_json=json.dumps(seg.params),
+                )
+            )
             db.commit()
 
     def add_intents(self, session_id: str, frames: list[IntentFrame]) -> None:
@@ -51,34 +59,64 @@ class Repository:
             return
         with self._db() as db:
             for f in frames:
-                db.add(m.IntentEvent(session_id=session_id, ts=f.ts, target=f.target,
-                                     attribute=f.attribute, value=f.value,
-                                     confidence=f.confidence))
+                db.add(
+                    m.IntentEvent(
+                        session_id=session_id,
+                        ts=f.ts,
+                        target=f.target,
+                        attribute=f.attribute,
+                        value=f.value,
+                        confidence=f.confidence,
+                    )
+                )
             db.commit()
 
     def add_snapshot(self, session_id: str, graph: SceneGraph) -> None:
         with self._db() as db:
-            db.add(m.SceneSnapshot(session_id=session_id, revision=graph.meta.revision,
-                                   ts=time.time(), graph_json=graph.model_dump_json(),
-                                   completeness=graph.meta.completeness))
+            db.add(
+                m.SceneSnapshot(
+                    session_id=session_id,
+                    revision=graph.meta.revision,
+                    ts=time.time(),
+                    graph_json=graph.model_dump_json(),
+                    completeness=graph.meta.completeness,
+                )
+            )
             db.commit()
 
-    def add_generation(self, session_id: str, img: GeneratedImage,
-                       prompt: OptimizedPrompt) -> None:
+    def add_generation(self, session_id: str, img: GeneratedImage, prompt: OptimizedPrompt) -> None:
         with self._db() as db:
-            db.add(m.Generation(id=img.id, session_id=session_id, backend=img.backend,
-                                prompt_positive=prompt.positive, generator=prompt.generator,
-                                image_path=img.path, latency_ms=img.latency_ms,
-                                created_at=img.created_at))
+            db.add(
+                m.Generation(
+                    id=img.id,
+                    session_id=session_id,
+                    backend=img.backend,
+                    prompt_positive=prompt.positive,
+                    generator=prompt.generator,
+                    image_path=img.path,
+                    latency_ms=img.latency_ms,
+                    created_at=img.created_at,
+                )
+            )
             db.commit()
 
     def list_generations(self, session_id: str) -> list[dict]:
         with self._db() as db:
-            rows = db.scalars(select(m.Generation)
-                              .where(m.Generation.session_id == session_id)
-                              .order_by(m.Generation.created_at.desc())).all()
-            return [{"id": r.id, "backend": r.backend, "prompt": r.prompt_positive,
-                     "latency_ms": r.latency_ms, "created_at": r.created_at} for r in rows]
+            rows = db.scalars(
+                select(m.Generation)
+                .where(m.Generation.session_id == session_id)
+                .order_by(m.Generation.created_at.desc())
+            ).all()
+            return [
+                {
+                    "id": r.id,
+                    "backend": r.backend,
+                    "prompt": r.prompt_positive,
+                    "latency_ms": r.latency_ms,
+                    "created_at": r.created_at,
+                }
+                for r in rows
+            ]
 
     def image_path(self, image_id: str) -> str | None:
         with self._db() as db:

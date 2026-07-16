@@ -1,4 +1,5 @@
 """SQLAlchemy ORM models — append-only event log enables full session replay."""
+
 from __future__ import annotations
 
 from sqlalchemy import Float, ForeignKey, Integer, String, Text

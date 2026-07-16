@@ -1,4 +1,5 @@
 """Image generation adapter interface."""
+
 from __future__ import annotations
 
 import time
@@ -36,7 +37,9 @@ class ImageGenerator(ABC):
         path = self._dir / f"{image_id}.png"
         path.write_bytes(data)
         return GeneratedImage(
-            id=image_id, path=str(path), backend=self.name,
+            id=image_id,
+            path=str(path),
+            backend=self.name,
             prompt_positive=prompt.positive,
             latency_ms=int((time.monotonic() - start) * 1000),
             created_at=time.time(),
