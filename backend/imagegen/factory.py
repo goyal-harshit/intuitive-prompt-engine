@@ -21,9 +21,9 @@ from backend.imagegen.pollinations import PollinationsGenerator
 log = logging.getLogger(__name__)
 
 # Backends probed as fallbacks in addition to whichever one is configured.
-# ComfyUI is excluded — it's a Phase 4 placeholder that always raises, so it
-# only makes sense when explicitly selected as the primary backend.
-_AUTO_FALLBACK_ORDER = ("pollinations", "huggingface")
+# Each _build must fail fast when its backend is unusable on this host
+# (HF: no token; ComfyUI: server unreachable) so unusable ones are skipped.
+_AUTO_FALLBACK_ORDER = ("pollinations", "huggingface", "comfyui")
 
 
 def _build(backend: str, cfg: ImageGenConfig, images_dir: Path) -> ImageGenerator:
