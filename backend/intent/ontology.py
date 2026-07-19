@@ -1,14 +1,21 @@
 """Declarative evidence ontology: motion primitive → scene-attribute hypotheses.
 
-Pure data. The engine applies context modifiers on top. Phase 5 externalizes
-this to YAML packs; keeping it declarative here makes that a file move.
+Pure data. The engine applies context modifiers on top. The tables below are
+the built-in defaults; ``load_ontology_pack`` loads the same structure from a
+YAML pack under ``plugins/`` so domain-specific ontologies (architecture,
+character design, ...) can be swapped in without touching code.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+
+import yaml
 
 from backend.gestures.schema import MotionPrimitive as P
+
+PLUGINS_DIR = Path(__file__).resolve().parents[2] / "plugins"
 
 
 @dataclass(frozen=True)
@@ -128,3 +135,83 @@ AMBIENT_RULES: list[tuple[str, tuple[float, float], Hypothesis]] = [
     ("head_pitch", (12.0, 90.0), Hypothesis("global", "environment", "expansive sky above", 0.25)),
     ("arousal", (0.6, 1.0), Hypothesis("global", "visual_effects", "dramatic atmosphere", 0.25)),
 ]
+
+
+# ---------- YAML ontology packs ----------
+
+
+@dataclass(frozen=True)
+class OntologyPack:
+    """One swappable rule set: everything RuleBasedIntentModel consults."""
+
+    ontology: dict[P, list[Hypothesis]]
+    shape_ontology: dict[str, list[Hypothesis]]
+    ambient_rules: list[tuple[str, tuple[float, float], Hypothesis]]
+
+
+BUILTIN_PACK = OntologyPack(ONTOLOGY, SHAPE_ONTOLOGY, AMBIENT_RULES)
+
+
+def _parse_hypothesis(raw: dict, where: str) -> Hypothesis:
+    try:
+        conditions = {
+            feature: (float(bounds[0]), float(bounds[1]))
+            for feature, bounds in (raw.get("conditions") or {}).items()
+        }
+        return Hypothesis(
+            target=raw["target"],
+            attribute=raw["attribute"],
+            value=raw["value"],
+            weight=float(raw["weight"]),
+            category=raw.get("category"),
+            conditions=conditions,
+        )
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        raise ValueError(f"ontology pack: malformed hypothesis in {where}: {exc!r}") from exc
+
+
+def load_ontology_pack(pack: str | Path = "default") -> OntologyPack:
+    """Load an ontology pack from ``plugins/<name>/ontology.yaml`` (or a path).
+
+    The shipped ``default`` pack mirrors the built-in tables; if its file is
+    missing (trimmed deployment artifact), the built-ins are used so the app
+    always boots. A *custom* pack that can't be found is an explicit
+    configuration error and raises.
+    """
+    path = Path(pack) if isinstance(pack, Path) else PLUGINS_DIR / pack / "ontology.yaml"
+    if not path.exists():
+        if pack == "default":
+            return BUILTIN_PACK
+        raise FileNotFoundError(f"ontology pack {pack!r} not found at {path}")
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    valid_primitives = {p.value: p for p in P}
+
+    ontology: dict[P, list[Hypothesis]] = {}
+    for name, entries in (raw.get("primitives") or {}).items():
+        if name not in valid_primitives:
+            raise ValueError(
+                f"ontology pack {path}: unknown primitive {name!r} "
+                f"(valid: {', '.join(sorted(valid_primitives))})"
+            )
+        ontology[valid_primitives[name]] = [
+            _parse_hypothesis(e, f"primitives.{name}") for e in entries
+        ]
+
+    shape_ontology = {
+        shape: [_parse_hypothesis(e, f"shapes.{shape}") for e in entries]
+        for shape, entries in (raw.get("shapes") or {}).items()
+    }
+
+    ambient_rules: list[tuple[str, tuple[float, float], Hypothesis]] = []
+    for entry in raw.get("ambient") or []:
+        try:
+            feature = entry["feature"]
+            lo, hi = float(entry["range"][0]), float(entry["range"][1])
+        except (KeyError, TypeError, ValueError, IndexError) as exc:
+            raise ValueError(f"ontology pack {path}: malformed ambient rule: {exc!r}") from exc
+        ambient_rules.append((feature, (lo, hi), _parse_hypothesis(entry, "ambient")))
+
+    if not ontology:
+        raise ValueError(f"ontology pack {path}: no 'primitives' section — nothing to match")
+    return OntologyPack(ontology, shape_ontology, ambient_rules)

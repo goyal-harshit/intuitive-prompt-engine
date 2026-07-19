@@ -159,6 +159,8 @@ backend/
 frontend/     Vite + React + TypeScript + Tailwind SPA (live features, scene graph, image)
   src/        components, hooks (useWebSocket, useSession), generated API types
   legacy/     archived pre-migration zero-build SPA (kept for reference)
+plugins/      swappable YAML ontology packs (select with ONTOLOGY_PACK)
+tools/        replay.py — inspect recorded sessions from the SQLite event log
 docs/         architecture & research design docs
 tests/        unit + integration tests
 Dockerfile · docker/ · docker-compose.yml     containerized stack (docker/frontend.Dockerfile builds the nginx-served SPA)
