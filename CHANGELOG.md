@@ -9,6 +9,7 @@ once it reaches 1.0.
 ## [Unreleased]
 
 ### Added
+- Repository hygiene & verification CLI (`tools/audit.py`): `scan` reports tool caches, coverage artifacts, temp/editor leftovers and suspiciously named files (report-only heuristic); `clean` deletes safe categories with dry-run default and git-tracked-file protection; `verify` mirrors every CI gate locally with `--repeat N` pytest runs for flake detection and a final hygiene check. Thin wrappers: `scripts/clean.{sh,ps1}`, `scripts/verify.{sh,ps1}`.
 - Session replay CLI (`tools/replay.py`): list recorded sessions and print merged gesture/intent/scene/generation timelines from the SQLite event log (`--json`, `--speed` paced playback).
 - Swappable YAML ontology packs under `plugins/` with a validated loader, `ONTOLOGY_PACK` / `intent.ontology_pack` selection, and an authoring guide in `docs/GESTURE_ONTOLOGY.md`.
 - Real ComfyUI image backend: queue → poll → download against a local server, workflow templates under `backend/imagegen/workflows/`, reachability probe, and membership in the automatic fallback chain.

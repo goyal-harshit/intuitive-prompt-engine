@@ -42,6 +42,24 @@ mypy              # type-check
 pytest            # unit + integration tests
 ```
 
+Or run every gate (backend + frontend + a hygiene scan) with one command:
+
+```bash
+./scripts/verify.sh                # Linux/macOS   (.\scripts\verify.ps1 on Windows)
+./scripts/verify.sh --repeat 3     # repeat pytest to surface flaky tests
+```
+
+To sweep out tool caches, coverage artifacts, and editor leftovers:
+
+```bash
+./scripts/clean.sh                 # dry-run: shows what would be deleted
+./scripts/clean.sh --apply         # delete (never touches git-tracked files)
+```
+
+Both are thin wrappers over `tools/audit.py` (`scan` / `clean` / `verify`), which also
+reports suspiciously named files (`temp.py`, `final_copy.js`, ...) for manual review —
+it never deletes those automatically.
+
 A parallel CI job does the same for the frontend (in `frontend/`):
 
 ```bash
