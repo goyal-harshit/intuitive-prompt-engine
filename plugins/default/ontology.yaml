@@ -1,0 +1,258 @@
+# Default ontology pack — mirrors the built-in tables in backend/intent/ontology.py.
+#
+# Structure:
+#   primitives.<motion_primitive>: list of hypotheses emitted when the
+#       primitive is detected (valid names: backend/gestures/schema.py
+#       MotionPrimitive values)
+#   shapes.<shape_class>: hypotheses for air-drawn shapes (circle | line |
+#       zigzag | freeform)
+#   ambient: rules matched against smoothed feature values; `feature` is a
+#       GestureFeatureVector field and `range` is the [lo, hi] band that
+#       triggers the hypothesis
+#
+# Each hypothesis: target (global | new_object | focus_object), attribute,
+# value (prompt text), weight (0..1 evidence strength), optional category
+# (object class for new_object) and conditions ({feature: [lo, hi]} gates).
+#
+# Copy this directory to plugins/<your-pack>/ and set ONTOLOGY_PACK=<your-pack>
+# (or intent.ontology_pack in config.yaml) to swap rule sets without code.
+primitives:
+  expand:
+  - target: global
+    attribute: scale
+    value: grand, monumental scale
+    weight: 0.6
+  - target: global
+    attribute: camera_distance
+    value: wide shot
+    weight: 0.5
+  - target: global
+    attribute: environment
+    value: vast panoramic landscape
+    weight: 0.4
+    conditions:
+      tempo:
+      - 0.0
+      - 0.45
+  - target: global
+    attribute: visual_effects
+    value: bursting energy, particles
+    weight: 0.3
+    conditions:
+      tempo:
+      - 0.65
+      - 1.0
+  contract:
+  - target: global
+    attribute: camera_distance
+    value: intimate close-up
+    weight: 0.6
+  - target: global
+    attribute: scale
+    value: small, detailed scale
+    weight: 0.4
+  raise:
+  - target: new_object
+    attribute: motion
+    value: soaring upward
+    weight: 0.5
+    category: airborne
+  - target: global
+    attribute: camera_angle
+    value: low angle looking up
+    weight: 0.3
+  lower:
+  - target: global
+    attribute: camera_angle
+    value: high angle, bird's eye
+    weight: 0.4
+  - target: global
+    attribute: mood
+    value: grounded, heavy
+    weight: 0.25
+  point_up:
+  - target: new_object
+    attribute: position
+    value: high in the sky
+    weight: 0.5
+    category: airborne
+  - target: new_object
+    attribute: motion
+    value: flying
+    weight: 0.5
+    category: airborne
+  point_forward:
+  - target: focus_object
+    attribute: salience
+    value: emphasized focal subject
+    weight: 0.5
+  - target: global
+    attribute: camera_distance
+    value: medium shot on subject
+    weight: 0.3
+  circle_overhead:
+  - target: new_object
+    attribute: shape
+    value: glowing orb
+    weight: 0.5
+    category: celestial
+  - target: global
+    attribute: time_of_day
+    value: night
+    weight: 0.3
+  - target: global
+    attribute: lighting
+    value: moonlit, celestial glow
+    weight: 0.3
+  circle_frontal:
+  - target: new_object
+    attribute: shape
+    value: round, orbiting form
+    weight: 0.4
+    category: object
+  - target: global
+    attribute: motion
+    value: orbital, swirling motion
+    weight: 0.3
+  sweep_horizontal:
+  - target: global
+    attribute: environment
+    value: sweeping open landscape
+    weight: 0.6
+  - target: global
+    attribute: camera_distance
+    value: panoramic vista
+    weight: 0.5
+  push_away:
+  - target: focus_object
+    attribute: position
+    value: receding into the distance
+    weight: 0.5
+  - target: global
+    attribute: camera_distance
+    value: distant framing
+    weight: 0.3
+  pull_in:
+  - target: focus_object
+    attribute: salience
+    value: drawn close, dominant in frame
+    weight: 0.5
+  - target: global
+    attribute: camera_distance
+    value: close-up
+    weight: 0.4
+  frame_rect:
+  - target: global
+    attribute: camera_angle
+    value: deliberately framed, cinematic composition
+    weight: 0.7
+  hold_still:
+  - target: global
+    attribute: _commit
+    value: commit
+    weight: 0.8
+  wave:
+  - target: global
+    attribute: motion
+    value: windswept, dynamic movement
+    weight: 0.4
+  - target: global
+    attribute: weather
+    value: breezy
+    weight: 0.25
+shapes:
+  circle:
+  - target: new_object
+    attribute: shape
+    value: round, orb-like form
+    weight: 0.55
+    category: drawn_object
+  - target: global
+    attribute: composition
+    value: centered circular motif
+    weight: 0.3
+  line:
+  - target: global
+    attribute: composition
+    value: strong directional line, horizon or edge
+    weight: 0.45
+  zigzag:
+  - target: global
+    attribute: motion
+    value: jagged, energetic linework
+    weight: 0.4
+  - target: global
+    attribute: visual_effects
+    value: lightning-like or angular energy
+    weight: 0.3
+  freeform:
+  - target: new_object
+    attribute: shape
+    value: abstract sketched form
+    weight: 0.3
+    category: drawn_object
+ambient:
+- feature: tempo
+  range:
+  - 0.6
+  - 1.0
+  target: global
+  attribute: mood
+  value: energetic, dramatic
+  weight: 0.4
+- feature: tempo
+  range:
+  - 0.0
+  - 0.2
+  target: global
+  attribute: mood
+  value: calm, serene
+  weight: 0.35
+- feature: smoothness
+  range:
+  - 0.75
+  - 1.0
+  target: global
+  attribute: lighting
+  value: soft diffuse light
+  weight: 0.25
+- feature: valence
+  range:
+  - 0.4
+  - 1.0
+  target: global
+  attribute: color_palette
+  value: warm vibrant palette
+  weight: 0.35
+- feature: valence
+  range:
+  - -1.0
+  - -0.4
+  target: global
+  attribute: lighting
+  value: moody chiaroscuro
+  weight: 0.4
+- feature: valence
+  range:
+  - -1.0
+  - -0.4
+  target: global
+  attribute: color_palette
+  value: desaturated cold palette
+  weight: 0.3
+- feature: head_pitch
+  range:
+  - 12.0
+  - 90.0
+  target: global
+  attribute: environment
+  value: expansive sky above
+  weight: 0.25
+- feature: arousal
+  range:
+  - 0.6
+  - 1.0
+  target: global
+  attribute: visual_effects
+  value: dramatic atmosphere
+  weight: 0.25

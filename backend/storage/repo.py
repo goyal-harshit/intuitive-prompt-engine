@@ -6,7 +6,7 @@ import json
 import time
 from pathlib import Path
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session as OrmSession
 from sqlalchemy.orm import sessionmaker
 
@@ -16,6 +16,17 @@ from backend.intent.schema import IntentFrame
 from backend.prompting.base import OptimizedPrompt
 from backend.scene.schema import SceneGraph
 from backend.storage import models as m
+
+# Pipeline timestamps (frames → segments → intents) are time.monotonic(),
+# deliberately immune to wall-clock jumps mid-session. The event log stores
+# wall-clock so all kinds merge onto one axis for replay; convert at this
+# boundary. (Rows written before this conversion existed keep their raw
+# monotonic values — tools/replay.py can't line those up across kinds.)
+_MONO_TO_WALL = time.time() - time.monotonic()
+
+
+def _wall(monotonic_ts: float) -> float:
+    return monotonic_ts + _MONO_TO_WALL
 
 
 class Repository:
@@ -46,7 +57,7 @@ class Repository:
             db.add(
                 m.GestureEvent(
                     session_id=session_id,
-                    ts=seg.t_end,
+                    ts=_wall(seg.t_end),
                     primitive=seg.primitive.value,
                     confidence=seg.confidence,
                     params_json=json.dumps(seg.params),
@@ -62,7 +73,7 @@ class Repository:
                 db.add(
                     m.IntentEvent(
                         session_id=session_id,
-                        ts=f.ts,
+                        ts=_wall(f.ts),
                         target=f.target,
                         attribute=f.attribute,
                         value=f.value,
@@ -122,3 +133,92 @@ class Repository:
         with self._db() as db:
             row = db.get(m.Generation, image_id)
             return row.image_path if row else None
+
+    # ---------- read side for tools/replay.py ----------
+
+    def list_sessions(self) -> list[dict]:
+        """All recorded sessions, newest first, with per-kind event counts."""
+        with self._db() as db:
+            sessions = db.scalars(select(m.Session).order_by(m.Session.started_at.desc())).all()
+            counts: dict[str, dict[str, int]] = {}
+            for model, kind in (
+                (m.GestureEvent, "gestures"),
+                (m.IntentEvent, "intents"),
+                (m.SceneSnapshot, "snapshots"),
+                (m.Generation, "generations"),
+            ):
+                for sid, n in db.execute(
+                    select(model.session_id, func.count()).group_by(model.session_id)
+                ):
+                    counts.setdefault(sid, {})[kind] = n
+            return [
+                {
+                    "id": s.id,
+                    "started_at": s.started_at,
+                    "ended_at": s.ended_at,
+                    "gestures": counts.get(s.id, {}).get("gestures", 0),
+                    "intents": counts.get(s.id, {}).get("intents", 0),
+                    "snapshots": counts.get(s.id, {}).get("snapshots", 0),
+                    "generations": counts.get(s.id, {}).get("generations", 0),
+                }
+                for s in sessions
+            ]
+
+    def session_timeline(self, session_id: str) -> list[dict]:
+        """Chronologically merged event log for one session.
+
+        Each entry carries a ``kind`` discriminator plus the fields of the
+        underlying row — the exact shape tools/replay.py renders.
+        """
+        with self._db() as db:
+            events: list[dict] = []
+            for g in db.scalars(
+                select(m.GestureEvent).where(m.GestureEvent.session_id == session_id)
+            ):
+                events.append(
+                    {
+                        "kind": "gesture",
+                        "ts": g.ts,
+                        "primitive": g.primitive,
+                        "confidence": g.confidence,
+                        "params": json.loads(g.params_json),
+                    }
+                )
+            for i in db.scalars(
+                select(m.IntentEvent).where(m.IntentEvent.session_id == session_id)
+            ):
+                events.append(
+                    {
+                        "kind": "intent",
+                        "ts": i.ts,
+                        "target": i.target,
+                        "attribute": i.attribute,
+                        "value": i.value,
+                        "confidence": i.confidence,
+                    }
+                )
+            for s in db.scalars(
+                select(m.SceneSnapshot).where(m.SceneSnapshot.session_id == session_id)
+            ):
+                events.append(
+                    {
+                        "kind": "scene",
+                        "ts": s.ts,
+                        "revision": s.revision,
+                        "completeness": s.completeness,
+                        "graph": json.loads(s.graph_json),
+                    }
+                )
+            for r in db.scalars(select(m.Generation).where(m.Generation.session_id == session_id)):
+                events.append(
+                    {
+                        "kind": "generation",
+                        "ts": r.created_at,
+                        "image_id": r.id,
+                        "backend": r.backend,
+                        "prompt": r.prompt_positive,
+                        "latency_ms": r.latency_ms,
+                    }
+                )
+            events.sort(key=lambda e: e["ts"])
+            return events

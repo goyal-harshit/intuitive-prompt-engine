@@ -17,7 +17,7 @@ from backend.gestures.schema import (
     MotionPrimitive,
     SequenceSegment,
 )
-from backend.intent.ontology import AMBIENT_RULES, ONTOLOGY, SHAPE_ONTOLOGY, Hypothesis
+from backend.intent.ontology import Hypothesis, OntologyPack, load_ontology_pack
 from backend.intent.schema import IntentFrame
 
 
@@ -40,8 +40,9 @@ class IntentModel(ABC):
 
 
 class RuleBasedIntentModel(IntentModel):
-    def __init__(self, cfg: IntentConfig) -> None:
+    def __init__(self, cfg: IntentConfig, pack: OntologyPack | None = None) -> None:
         self._cfg = cfg
+        self._pack = pack or load_ontology_pack(cfg.ontology_pack)
         self._recent: deque[tuple[float, MotionPrimitive]] = deque(maxlen=20)
         self._last_render_ts: float | None = None
         self._ambient_state: dict[str, float] = {}
@@ -55,7 +56,7 @@ class RuleBasedIntentModel(IntentModel):
         repeats = sum(1 for ts, p in self._recent if p == seg.primitive and seg.t_start - ts < 5.0)
         self._recent.append((seg.t_end, seg.primitive))
 
-        for hyp in ONTOLOGY.get(seg.primitive, []):
+        for hyp in self._pack.ontology.get(seg.primitive, []):
             if not self._conditions_met(hyp, features):
                 continue
             conf, modifiers = seg.confidence * hyp.weight, []
@@ -87,7 +88,7 @@ class RuleBasedIntentModel(IntentModel):
         """Ambient hypotheses from smoothed affect/tempo; rate-limited per attribute."""
         frames: list[IntentFrame] = []
         alpha = 0.05
-        for key, (lo, hi), hyp in AMBIENT_RULES:
+        for key, (lo, hi), hyp in self._pack.ambient_rules:
             raw = getattr(features, key, 0.0)
             s = self._ambient_state.get(key, raw)
             s += alpha * (raw - s)
@@ -116,7 +117,7 @@ class RuleBasedIntentModel(IntentModel):
     def on_drawn_shape(self, shape: DrawnShape) -> list[IntentFrame]:
         frames: list[IntentFrame] = []
         ts = shape.points[-1].ts if shape.points else 0.0
-        for hyp in SHAPE_ONTOLOGY.get(shape.shape, []):
+        for hyp in self._pack.shape_ontology.get(shape.shape, []):
             conf = min(1.0, shape.confidence * hyp.weight)
             if conf < self._cfg.min_confidence:
                 continue
@@ -142,7 +143,7 @@ class RuleBasedIntentModel(IntentModel):
         """Non-mutating: what the top-matching primitives would mean if sustained."""
         out: list[dict] = []
         for prim, score in candidates[:3]:
-            for hyp in ONTOLOGY.get(prim, []):
+            for hyp in self._pack.ontology.get(prim, []):
                 if not self._conditions_met(hyp, fv):
                     continue
                 out.append(
