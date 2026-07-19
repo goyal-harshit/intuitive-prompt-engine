@@ -17,6 +17,7 @@ def _load_app(tmp_path, monkeypatch, **env):
     monkeypatch.delenv("API_KEY", raising=False)
     monkeypatch.delenv("CORS_ORIGINS", raising=False)
     monkeypatch.delenv("RATE_LIMIT_PER_MINUTE", raising=False)
+    monkeypatch.delenv("FRONTEND_DIST", raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     import backend.core.config as config
@@ -142,10 +143,29 @@ def test_missing_image_is_404(client) -> None:
     assert client.get("/api/images/not-a-real-id").status_code == 404
 
 
-def test_frontend_index_served(client) -> None:
-    resp = client.get("/")
-    assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]
+def test_frontend_index_served(tmp_path, monkeypatch) -> None:
+    # Point the app at a synthetic dist so this passes whether or not the real
+    # frontend build exists (CI never builds it for the backend job).
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>t</title>")
+    main, config = _load_app(tmp_path, monkeypatch, FRONTEND_DIST=str(dist))
+    try:
+        with TestClient(main.app) as c:
+            resp = c.get("/")
+            assert resp.status_code == 200
+            assert "text/html" in resp.headers["content-type"]
+    finally:
+        config.get_config.cache_clear()
+
+
+def test_root_404_when_no_frontend_build(tmp_path, monkeypatch) -> None:
+    main, config = _load_app(tmp_path, monkeypatch, FRONTEND_DIST=str(tmp_path / "missing"))
+    try:
+        with TestClient(main.app) as c:
+            assert c.get("/").status_code == 404
+    finally:
+        config.get_config.cache_clear()
 
 
 def test_openapi_schema(client) -> None:
