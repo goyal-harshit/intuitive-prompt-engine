@@ -79,4 +79,32 @@ The same primitive means different things given history:
 - `expand` **immediately after** an image render is interpreted as *refinement*: camera_distance:wider on the existing scene, weight ×1.5.
 - Repetition of a primitive within 5 s multiplies its weight (×1.3 per repeat, cap ×2) — natural human emphasis.
 
-This context logic lives in `intent/engine.py` as reusable modifiers, keeping the ontology table declarative and data-driven (extensible via YAML without code changes in Phase 5).
+This context logic lives in `intent/engine.py` as reusable modifiers, keeping the ontology table declarative and data-driven — extensible via YAML packs without code changes (see below).
+
+## Writing an ontology pack
+
+The full rule set (Layers 2b + 3 and the ambient rules) is swappable as a **pack**: a directory under `plugins/` containing an `ontology.yaml`. The shipped [`plugins/default/ontology.yaml`](../plugins/default/ontology.yaml) mirrors the built-in tables and doubles as the reference example.
+
+To create one (e.g. an architecture-focused vocabulary):
+
+1. Copy `plugins/default/` to `plugins/architecture/` and edit the hypothesis values/weights.
+2. Select it with `ONTOLOGY_PACK=architecture` (env) or `intent.ontology_pack: architecture` in `config.yaml`.
+
+The YAML has three sections:
+
+```yaml
+primitives:            # motion primitive → hypotheses (Layer 3)
+  expand:
+    - target: global   # global | new_object | focus_object
+      attribute: scale
+      value: grand, monumental scale   # prompt text contributed on match
+      weight: 0.6                      # evidence strength 0..1
+      conditions: {tempo: [0.0, 0.45]} # optional feature gates (lo..hi)
+shapes:                # air-drawn shape class → hypotheses (Layer 2b)
+  circle:
+    - {target: new_object, attribute: shape, value: round orb, weight: 0.55, category: drawn_object}
+ambient:               # smoothed feature band → hypothesis
+  - {feature: tempo, range: [0.6, 1.0], target: global, attribute: mood, value: energetic, weight: 0.4}
+```
+
+Primitive names must match `MotionPrimitive` values (`backend/gestures/schema.py`); unknown names, missing fields, or an empty `primitives` section fail at startup with a pointed error. Loading is implemented by `load_ontology_pack` in [`backend/intent/ontology.py`](../backend/intent/ontology.py); `tests/test_ontology_pack.py` keeps the default pack byte-faithful to the built-ins.

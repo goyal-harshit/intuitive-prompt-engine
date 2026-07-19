@@ -9,6 +9,15 @@ once it reaches 1.0.
 ## [Unreleased]
 
 ### Added
+- Repository hygiene & verification CLI (`tools/audit.py`): `scan` reports tool caches, coverage artifacts, temp/editor leftovers and suspiciously named files (report-only heuristic); `clean` deletes safe categories with dry-run default and git-tracked-file protection; `verify` mirrors every CI gate locally with `--repeat N` pytest runs for flake detection and a final hygiene check. Thin wrappers: `scripts/clean.{sh,ps1}`, `scripts/verify.{sh,ps1}`.
+- Session replay CLI (`tools/replay.py`): list recorded sessions and print merged gesture/intent/scene/generation timelines from the SQLite event log (`--json`, `--speed` paced playback).
+- Swappable YAML ontology packs under `plugins/` with a validated loader, `ONTOLOGY_PACK` / `intent.ontology_pack` selection, and an authoring guide in `docs/GESTURE_ONTOLOGY.md`.
+- Real ComfyUI image backend: queue → poll → download against a local server, workflow templates under `backend/imagegen/workflows/`, reachability probe, and membership in the automatic fallback chain.
+- Frontend test depth: SettingsModal, TopBar, SceneGraphPanel, IntentPanel, GeneratedImagePanel, PromptPanel and `lib/backendUrl` specs (26 → 46 tests) plus `npm run test:coverage`.
+
+### Fixed
+- CI: `npm ci` peer-dependency conflict (typescript pinned to 5.9.x for openapi-typescript), backend static-serving tests no longer require a locally built `frontend/dist` (`FRONTEND_DIST` override), Docker smoke test now targets compose's actual host port, and the unfixable transitive protobuf advisory (PYSEC-2026-1805, mediapipe pin) is suppressed with justification.
+- Event log stored gesture/intent timestamps in the monotonic clock domain while scene/generation rows used wall-clock; converted at the storage boundary so replay timelines merge on one axis.
 - Formal `/api/health` schema: `status`, `version`, `uptime_s`, `active_sessions`, `imagegen`, `prompting`.
 - Opt-in per-IP rate limiting for `POST /api/*` (`RATE_LIMIT_PER_MINUTE`, off by default) returning `429` + `Retry-After`.
 - `docs/DEPLOYMENT.md` covering native, Docker, and GitHub Pages + remote backend topologies.

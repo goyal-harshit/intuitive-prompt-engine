@@ -36,6 +36,8 @@ class IntentConfig(BaseModel):
     window_s: float = 1.5
     decay_half_life_s: float = 90.0
     min_confidence: float = 0.35
+    # Named rule set under plugins/<name>/ontology.yaml (see docs/GESTURE_ONTOLOGY.md).
+    ontology_pack: str = "default"
 
 
 class GestureConfig(BaseModel):
@@ -75,6 +77,7 @@ class HFConfig(BaseModel):
 class ComfyUIConfig(BaseModel):
     url: str = "http://127.0.0.1:8188"
     workflow: str = "sdxl_default"
+    timeout_s: float = 120.0  # queue + sampling can be slow on modest GPUs
 
 
 class ImageGenConfig(BaseModel):
@@ -122,6 +125,7 @@ _ENV_OVERRIDES: dict[str, tuple[str, ...]] = {
     "SESSION_TTL_S": ("server", "session_ttl_s"),
     "RATE_LIMIT_PER_MINUTE": ("server", "rate_limit_per_minute"),
     "IMAGEGEN_BACKEND": ("imagegen", "backend"),
+    "ONTOLOGY_PACK": ("intent", "ontology_pack"),
     "PROMPTING_STRATEGY": ("prompting", "strategy"),
     "OLLAMA_URL": ("prompting", "ollama_url"),
 }
