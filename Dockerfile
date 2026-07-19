@@ -30,6 +30,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 # Application code. The frontend is built and served by its own nginx
 # container (see docker/frontend.Dockerfile) — this image serves API only.
 COPY backend/ ./backend/
+COPY plugins/ ./plugins/
 COPY config.yaml run.py ./
 
 # Run as an unprivileged user; own the data volume mount point.

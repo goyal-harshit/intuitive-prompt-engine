@@ -25,7 +25,7 @@ ignore_missing_imports = true    # cv2/mediapipe ship without complete stubs
 warn_unused_ignores = false
 warn_redundant_casts = true
 no_implicit_optional = true
-files = ["backend", "run.py", "tests"]
+files = ["backend", "run.py", "tests", "tools"]
 
 [[tool.mypy.overrides]]
 # Tightened incrementally per docs/ROADMAP.md Phase 2 — pure-math/rule modules

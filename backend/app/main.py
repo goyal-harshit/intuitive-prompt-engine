@@ -37,7 +37,11 @@ repo = Repository(cfg.data_dir)
 sessions: dict[str, PipelineSession] = {}
 _last_seen: dict[str, float] = {}
 _started_at = time.time()
-FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+# Built-frontend location; FRONTEND_DIST overrides for deployments (and tests)
+# where the static build lives outside the repo tree.
+FRONTEND = Path(
+    os.environ.get("FRONTEND_DIST") or Path(__file__).resolve().parents[2] / "frontend" / "dist"
+)
 
 APP_VERSION = "0.1.0"
 
